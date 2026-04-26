@@ -1,0 +1,298 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *, .warm-dark *, .paper-dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-heading);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --animate-shiny-text: shiny-text 8s infinite;
+  --animate-gradient: gradient 8s linear infinite;
+  --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
+  --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+  @keyframes shiny-text {
+  0%, 90%, 100% {
+    background-position: calc(-100% - var(--shiny-width)) 0;
+    }
+  30%, 60% {
+    background-position: calc(100% + var(--shiny-width)) 0;
+    }
+  }
+  @keyframes gradient {
+  to {
+    background-position: var(--bg-size, 300%) 0;
+    }
+  }
+  @keyframes shimmer-slide {
+  to {
+    transform: translate(calc(100cqw - 100%), 0);
+    }
+  }
+  @keyframes spin-around {
+  0% {
+    transform: translateZ(0) rotate(0);
+    }
+  15%, 35% {
+    transform: translateZ(0) rotate(90deg);
+    }
+  65%, 85% {
+    transform: translateZ(0) rotate(270deg);
+    }
+  100% {
+    transform: translateZ(0) rotate(360deg);
+    }
+  }
+  @keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+  }
+}
+
+/* ================================
+ * Theme: Claude Warm (Light) — default
+ * 米白底 + 橙色强调 + 衬线标题
+ * ================================ */
+:root,
+:root.warm-light {
+  --background: oklch(0.983 0.011 80);
+  --foreground: oklch(0.22 0.028 40);
+  --card: oklch(0.995 0.006 80);
+  --card-foreground: oklch(0.22 0.028 40);
+  --popover: oklch(0.995 0.006 80);
+  --popover-foreground: oklch(0.22 0.028 40);
+  --primary: oklch(0.62 0.18 42);
+  --primary-foreground: oklch(0.995 0.006 80);
+  --secondary: oklch(0.95 0.018 75);
+  --secondary-foreground: oklch(0.28 0.035 40);
+  --muted: oklch(0.955 0.012 80);
+  --muted-foreground: oklch(0.52 0.025 45);
+  --accent: oklch(0.93 0.04 70);
+  --accent-foreground: oklch(0.28 0.05 40);
+  --destructive: oklch(0.58 0.22 27);
+  --border: oklch(0.9 0.018 75);
+  --input: oklch(0.92 0.015 75);
+  --ring: oklch(0.62 0.18 42 / 0.4);
+  --chart-1: oklch(0.68 0.18 42);
+  --chart-2: oklch(0.72 0.15 85);
+  --chart-3: oklch(0.56 0.12 30);
+  --chart-4: oklch(0.78 0.12 60);
+  --chart-5: oklch(0.48 0.1 40);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.97 0.015 80);
+  --sidebar-foreground: oklch(0.28 0.028 40);
+  --sidebar-primary: oklch(0.62 0.18 42);
+  --sidebar-primary-foreground: oklch(0.995 0.006 80);
+  --sidebar-accent: oklch(0.93 0.025 75);
+  --sidebar-accent-foreground: oklch(0.28 0.028 40);
+  --sidebar-border: oklch(0.9 0.018 75);
+  --sidebar-ring: oklch(0.62 0.18 42 / 0.4);
+  --font-heading: "EB Garamond", "Source Serif Pro", Georgia, serif;
+  --texture: none;
+}
+
+/* Claude Warm (Dark) */
+:root.warm-dark {
+  --background: oklch(0.18 0.018 40);
+  --foreground: oklch(0.95 0.018 70);
+  --card: oklch(0.22 0.022 40);
+  --card-foreground: oklch(0.95 0.018 70);
+  --popover: oklch(0.22 0.022 40);
+  --popover-foreground: oklch(0.95 0.018 70);
+  --primary: oklch(0.78 0.17 60);
+  --primary-foreground: oklch(0.18 0.018 40);
+  --secondary: oklch(0.28 0.028 40);
+  --secondary-foreground: oklch(0.95 0.018 70);
+  --muted: oklch(0.26 0.024 40);
+  --muted-foreground: oklch(0.72 0.02 55);
+  --accent: oklch(0.32 0.04 50);
+  --accent-foreground: oklch(0.95 0.018 70);
+  --destructive: oklch(0.68 0.2 25);
+  --border: oklch(0.32 0.028 40);
+  --input: oklch(0.3 0.028 40);
+  --ring: oklch(0.78 0.17 60 / 0.5);
+  --chart-1: oklch(0.78 0.17 60);
+  --chart-2: oklch(0.72 0.15 85);
+  --chart-3: oklch(0.58 0.14 30);
+  --chart-4: oklch(0.82 0.1 55);
+  --chart-5: oklch(0.5 0.12 40);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.2 0.02 40);
+  --sidebar-foreground: oklch(0.95 0.018 70);
+  --sidebar-primary: oklch(0.78 0.17 60);
+  --sidebar-primary-foreground: oklch(0.18 0.018 40);
+  --sidebar-accent: oklch(0.28 0.028 40);
+  --sidebar-accent-foreground: oklch(0.95 0.018 70);
+  --sidebar-border: oklch(0.32 0.028 40);
+  --sidebar-ring: oklch(0.78 0.17 60 / 0.5);
+  --font-heading: "EB Garamond", "Source Serif Pro", Georgia, serif;
+  --texture: none;
+}
+
+/* ================================
+ * Theme: Paper Notion (Light)
+ * 奶白纸感 + 灰蓝文字 + 纸纹背景
+ * ================================ */
+:root.paper-light {
+  --background: oklch(0.985 0.006 90);
+  --foreground: oklch(0.2 0.018 250);
+  --card: oklch(1 0.002 90);
+  --card-foreground: oklch(0.2 0.018 250);
+  --popover: oklch(1 0.002 90);
+  --popover-foreground: oklch(0.2 0.018 250);
+  --primary: oklch(0.3 0.03 250);
+  --primary-foreground: oklch(0.985 0.006 90);
+  --secondary: oklch(0.95 0.008 80);
+  --secondary-foreground: oklch(0.25 0.02 250);
+  --muted: oklch(0.96 0.006 80);
+  --muted-foreground: oklch(0.5 0.018 240);
+  --accent: oklch(0.92 0.018 220);
+  --accent-foreground: oklch(0.25 0.03 250);
+  --destructive: oklch(0.55 0.2 25);
+  --border: oklch(0.92 0.008 80);
+  --input: oklch(0.94 0.008 80);
+  --ring: oklch(0.55 0.05 240 / 0.35);
+  --chart-1: oklch(0.55 0.12 230);
+  --chart-2: oklch(0.65 0.1 180);
+  --chart-3: oklch(0.62 0.12 140);
+  --chart-4: oklch(0.68 0.12 85);
+  --chart-5: oklch(0.55 0.14 30);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.975 0.006 85);
+  --sidebar-foreground: oklch(0.25 0.02 250);
+  --sidebar-primary: oklch(0.3 0.03 250);
+  --sidebar-primary-foreground: oklch(0.985 0.006 90);
+  --sidebar-accent: oklch(0.93 0.012 220);
+  --sidebar-accent-foreground: oklch(0.25 0.02 250);
+  --sidebar-border: oklch(0.92 0.008 80);
+  --sidebar-ring: oklch(0.55 0.05 240 / 0.35);
+  --font-heading: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --texture: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.25 0 0 0 0 0.22 0 0 0 0 0.2 0 0 0 0.035 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* Paper Notion (Dark) */
+:root.paper-dark {
+  --background: oklch(0.16 0.012 250);
+  --foreground: oklch(0.93 0.012 80);
+  --card: oklch(0.2 0.014 250);
+  --card-foreground: oklch(0.93 0.012 80);
+  --popover: oklch(0.2 0.014 250);
+  --popover-foreground: oklch(0.93 0.012 80);
+  --primary: oklch(0.85 0.04 85);
+  --primary-foreground: oklch(0.18 0.014 250);
+  --secondary: oklch(0.25 0.016 250);
+  --secondary-foreground: oklch(0.93 0.012 80);
+  --muted: oklch(0.23 0.014 250);
+  --muted-foreground: oklch(0.68 0.018 80);
+  --accent: oklch(0.28 0.02 230);
+  --accent-foreground: oklch(0.93 0.012 80);
+  --destructive: oklch(0.68 0.2 25);
+  --border: oklch(0.28 0.018 250);
+  --input: oklch(0.26 0.016 250);
+  --ring: oklch(0.65 0.06 240 / 0.4);
+  --chart-1: oklch(0.7 0.14 230);
+  --chart-2: oklch(0.72 0.1 180);
+  --chart-3: oklch(0.7 0.12 140);
+  --chart-4: oklch(0.78 0.1 85);
+  --chart-5: oklch(0.62 0.14 30);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.18 0.014 250);
+  --sidebar-foreground: oklch(0.93 0.012 80);
+  --sidebar-primary: oklch(0.85 0.04 85);
+  --sidebar-primary-foreground: oklch(0.18 0.014 250);
+  --sidebar-accent: oklch(0.25 0.02 230);
+  --sidebar-accent-foreground: oklch(0.93 0.012 80);
+  --sidebar-border: oklch(0.28 0.018 250);
+  --sidebar-ring: oklch(0.65 0.06 240 / 0.4);
+  --font-heading: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --texture: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 0.95 0 0 0 0 0.85 0 0 0 0.03 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* Compat: next-themes dark selector for shadcn components */
+:root.warm-dark,
+:root.paper-dark {
+  color-scheme: dark;
+}
+.dark {
+  color-scheme: dark;
+}
+:root.warm-dark .dark\:hidden,
+:root.paper-dark .dark\:hidden { display: none; }
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image: var(--texture);
+    background-repeat: repeat;
+    background-attachment: fixed;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.01em;
+  }
+  /* Add a native `.dark` class synonym for the two dark variants so
+   * shadcn's `dark:` utility keeps working. */
+  :root.warm-dark,
+  :root.paper-dark {
+    @apply [&_*]:[color-scheme:dark];
+  }
+}
+
+/* Native .dark class alias applied by ThemeProvider based on isDark */
+:root.warm-dark,
+:root.paper-dark {
+  /* acts as dark trigger so tailwind `dark:` variants activate */
+}
+
+/* Helper to animate tool-card ribbon */
+@keyframes ribbon-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.4; }
+}
+.ribbon-running { animation: ribbon-pulse 1.4s ease-in-out infinite; }

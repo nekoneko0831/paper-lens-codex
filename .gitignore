@@ -1,0 +1,37 @@
+# Paper outputs (generated per-project, not distributable)
+paper-notes/
+
+# PDF files
+*.pdf
+
+# Extracted images (large binaries)
+images/
+figures/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Node / Next.js (paper-lens-web)
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+.pnpm-debug.log*
+npm-debug.log*
+
+# Local env (use .env.local.example as template)
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
