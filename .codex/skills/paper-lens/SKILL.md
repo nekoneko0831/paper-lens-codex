@@ -176,7 +176,7 @@ paper-notes/<paper-name>/
 
 在多个 references 里我们要求用「结构化提问」收集用户选择。映射如下，按可用性优先：
 
-1. **首选**：codex 的 `item/tool/requestUserInput`（一次性传多组带选项的问题，前端会渲染成多选卡片，自带「其他」输入框）。这是 paper-lens-codex Web UI 设计的协议。
+1. **首选**：Codex 的 `request_user_input` / `item/tool/requestUserInput`（一次性传多组带选项的问题，前端会渲染成选择卡片，自带「其他」输入框）。这是 paper-lens-codex Web UI 设计的协议。每个问题至少包含 `id`、`header`、`question`、`options: [{label, description}]`；如果是单选，把「单选」写进 `question` 或 `header`，否则默认按多选处理。
 2. **次选**：把同样的问题列表渲染成 Markdown 嵌套清单（每组 ≤4 选项 + 一行「其他/自定义」），输出到对话里，等用户用普通文本回复。
 
 不论走哪条路：每组问题最多 4 个选项，按主题/关联分组；**始终保留「其他/自定义」** 让用户自由输入；术语英文必须带中文注释（≤8 字）。

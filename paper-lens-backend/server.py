@@ -11,6 +11,7 @@ Differences from the Claude paper-lens backend:
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import json
 import logging
 import os
@@ -37,13 +38,106 @@ logger = logging.getLogger("paper-lens-codex-backend")
 BASE_DIR = Path(__file__).parent
 PROJECT_DIR = BASE_DIR.parent  # The main project directory
 PAPER_NOTES_DIR = PROJECT_DIR / "paper-notes"
+CODEX_WORKSPACE_LINK = Path(os.environ.get("PAPER_LENS_CODEX_WORKSPACE", "/private/tmp/paper-lens-codex-workspace"))
 
 # Server port — resolved once at startup
 SERVER_PORT = int(os.environ.get("PORT", 8766))
 
 # Active sessions: session_id -> (adapter, last_active_timestamp)
 sessions: dict[str, tuple[CodexAppServerAdapter, float]] = {}
+hubs: dict[str, "SessionEventHub"] = {}
 SESSION_TTL_SECONDS = 1800  # 30 minutes — covers long turns + user-input waits
+
+
+class SessionEventHub:
+    """Fan one adapter event stream out to multiple SSE subscribers.
+
+    The adapter exposes a single async queue. If every EventSource connection
+    consumed it directly, refreshes, reconnects, curl probes, or multiple tabs
+    would race each other and one subscriber could steal events from another.
+    This hub is the only adapter.events() consumer and broadcasts each event to
+    per-subscriber queues.
+    """
+
+    def __init__(self, session_id: str, adapter: CodexAppServerAdapter):
+        self.session_id = session_id
+        self.adapter = adapter
+        self.subscribers: set[asyncio.Queue[SessionEvent]] = set()
+        self.history: deque[SessionEvent] = deque(maxlen=500)
+        self.task: asyncio.Task | None = None
+        self.closed = False
+
+    def start(self) -> None:
+        if self.task is None or self.task.done():
+            self.task = asyncio.create_task(self._pump())
+
+    async def stop(self) -> None:
+        self.closed = True
+        if self.task and not self.task.done():
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
+        for q in list(self.subscribers):
+            await q.put(SessionEvent(type=EventType.DONE))
+        self.subscribers.clear()
+
+    async def subscribe(self) -> asyncio.Queue[SessionEvent]:
+        q: asyncio.Queue[SessionEvent] = asyncio.Queue(maxsize=1000)
+        for event in self.history:
+            await q.put(event)
+        self.subscribers.add(q)
+        self.adapter._subscribers = len(self.subscribers)
+        logger.info(
+            "SSE subscriber attached: session=%s subscribers=%s replay=%s",
+            self.session_id, len(self.subscribers), len(self.history),
+        )
+        return q
+
+    def unsubscribe(self, q: asyncio.Queue[SessionEvent]) -> None:
+        self.subscribers.discard(q)
+        self.adapter._subscribers = len(self.subscribers)
+        logger.info(
+            "SSE subscriber detached: session=%s subscribers=%s",
+            self.session_id, len(self.subscribers),
+        )
+
+    async def _pump(self) -> None:
+        logger.info("event pump started: session=%s", self.session_id)
+        try:
+            async for event in self.adapter.events():
+                self.history.append(event)
+                if self.session_id in sessions:
+                    sessions[self.session_id] = (self.adapter, time.time())
+                await self._broadcast(event)
+                if event.type in (EventType.DONE, EventType.ERROR):
+                    self.closed = True
+                    break
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.exception("event pump crashed: session=%s error=%s", self.session_id, e)
+            await self._broadcast(SessionEvent(type=EventType.ERROR, data=str(e)))
+        finally:
+            logger.info("event pump stopped: session=%s", self.session_id)
+
+    async def _broadcast(self, event: SessionEvent) -> None:
+        msg = _event_to_sse_data(event)
+        logger.info(
+            "event broadcast: session=%s type=%s subscribers=%s payload=%s",
+            self.session_id, event.type, len(self.subscribers),
+            _event_payload_preview(msg),
+        )
+        dead: list[asyncio.Queue[SessionEvent]] = []
+        for q in list(self.subscribers):
+            try:
+                q.put_nowait(event)
+            except asyncio.QueueFull:
+                logger.warning("dropping slow SSE subscriber: session=%s", self.session_id)
+                dead.append(q)
+        for q in dead:
+            self.unsubscribe(q)
 
 
 # ── Session cleanup ───────────────────────────────────────────────────
@@ -57,18 +151,30 @@ async def _cleanup_expired_sessions() -> None:
     input), no HTTP endpoint gets hit, so the timestamp would otherwise
     age past TTL and the session would be reaped mid-turn.
     """
+    def _is_session_in_use(adapter: CodexAppServerAdapter) -> bool:
+        if getattr(adapter, "_active_turn", False):
+            return True
+        if getattr(adapter, "_pending_questions", None):
+            return True
+        if getattr(adapter, "_subscribers", 0) > 0:
+            return True
+        return False
+
     while True:
         await asyncio.sleep(60)  # check every minute
         now = time.time()
         expired = [
             sid for sid, (adapter, ts) in sessions.items()
             if now - ts > SESSION_TTL_SECONDS
-            and getattr(adapter, "_cli_ws", None) is None
+            and not _is_session_in_use(adapter)
         ]
         for sid in expired:
             adapter, _ = sessions.pop(sid)
+            hub = hubs.pop(sid, None)
             logger.info(f"Cleaning up expired session: {sid}")
             try:
+                if hub:
+                    await hub.stop()
                 await adapter.stop()
             except Exception as e:
                 logger.warning(f"Error stopping expired session {sid}: {e}")
@@ -85,6 +191,11 @@ async def lifespan(app: FastAPI):
         await task
     except asyncio.CancelledError:
         pass
+    for sid, hub in list(hubs.items()):
+        try:
+            await hub.stop()
+        except Exception as e:
+            logger.warning("Error stopping event hub %s: %s", sid, e)
 
 
 app = FastAPI(title="Paper-Lens-Codex Backend", lifespan=lifespan)
@@ -413,10 +524,13 @@ async def start_session(
     # Build the prompt for paper-lens skill
     prompt = _build_prompt(paper_name, mode, pdf_url, message)
 
-    adapter = CodexAppServerAdapter(working_dir=str(PROJECT_DIR))
+    adapter = CodexAppServerAdapter(working_dir=str(_codex_working_dir()))
     session_id = await adapter.start(prompt)
 
     sessions[session_id] = (adapter, time.time())
+    hub = SessionEventHub(session_id, adapter)
+    hubs[session_id] = hub
+    hub.start()
     return {"session_id": session_id}
 
 
@@ -441,18 +555,29 @@ async def sse_stream(session_id: str):
     adapter, _ = entry
     # Update last active
     sessions[session_id] = (adapter, time.time())
+    hub = hubs.get(session_id)
+    if hub is None:
+        hub = SessionEventHub(session_id, adapter)
+        hubs[session_id] = hub
+        hub.start()
 
     async def event_generator():
+        subscriber = await hub.subscribe()
         try:
-            async for event in adapter.events():
+            while True:
+                event = await subscriber.get()
                 msg = _event_to_sse_data(event)
                 if msg is not None:
                     yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+                if event.type in (EventType.DONE, EventType.ERROR):
+                    break
         except asyncio.CancelledError:
             pass
         except Exception as e:
             logger.error(f"SSE error for {session_id}: {e}")
             yield f"data: {json.dumps({'type': 'error', 'data': str(e)})}\n\n"
+        finally:
+            hub.unsubscribe(subscriber)
 
     return StreamingResponse(
         event_generator(),
@@ -564,6 +689,30 @@ def _backup_if_exists(paper_name: str, mode: str) -> None:
     logger.info(f"Backed up {target.name} -> {versioned.name}")
 
 
+def _codex_working_dir() -> Path:
+    """Return an ASCII-only cwd for codex app-server.
+
+    Codex 0.125.0 emits the workspace path inside an HTTP metadata header.
+    Non-ASCII cwd paths can make that header fail UTF-8 conversion mid-stream,
+    so we enter the project through an ASCII symlink while all files still
+    resolve back to PROJECT_DIR.
+    """
+    try:
+        if CODEX_WORKSPACE_LINK.exists() or CODEX_WORKSPACE_LINK.is_symlink():
+            if CODEX_WORKSPACE_LINK.resolve() == PROJECT_DIR.resolve():
+                return CODEX_WORKSPACE_LINK
+            logger.warning(
+                "Configured Codex workspace link points elsewhere: %s",
+                CODEX_WORKSPACE_LINK,
+            )
+            return PROJECT_DIR
+        CODEX_WORKSPACE_LINK.symlink_to(PROJECT_DIR, target_is_directory=True)
+        return CODEX_WORKSPACE_LINK
+    except Exception as e:
+        logger.warning("Could not create ASCII Codex workspace symlink: %s", e)
+        return PROJECT_DIR
+
+
 def _build_prompt(paper_name: str, mode: str, pdf_url: str, message: str = "") -> str:
     """Build the initial prompt for paper-lens skill."""
     if mode == "chat":
@@ -596,15 +745,29 @@ def _build_prompt(paper_name: str, mode: str, pdf_url: str, message: str = "") -
         paper_dir = PAPER_NOTES_DIR / paper_name
         pdf_files = list(paper_dir.glob("*.pdf")) if paper_dir.exists() else []
         if pdf_files:
-            source = str(pdf_files[0])
+            source = f"paper-notes/{paper_name}/{pdf_files[0].name}"
         else:
             source = paper_name
 
-    return f"/paper-lens {source}\n选择：{mode_text}"
+    return (
+        f"/paper-lens {source}\n选择：{mode_text}\n\n"
+        "[Paper Lens Codex Web UI 约束]\n"
+        "- 当前运行在 paper-lens-codex Web UI 中。需要向用户收集选择时，"
+        "不要使用 request_user_input。请输出一个隐藏结构化问题块，格式必须严格为：\n"
+        "```paper_lens_question\n"
+        "{\"questions\":[{\"id\":\"focus\",\"header\":\"选择阅读重点\",\"question\":\"你想优先看哪部分？\","
+        "\"options\":[{\"label\":\"核心贡献\",\"description\":\"先理解论文解决了什么问题\"}],"
+        "\"multiSelect\":true}]}\n"
+        "```\n"
+        "输出问题块后立即停止本轮正文，等待用户回答；不要把选择题只写成普通 Markdown。\n"
+        "- 每个 question 需要包含 id、header、question、options；options 使用 "
+        "{label, description}。需要多选时在问题文字中写明“可多选”，Web UI 会以数组形式回传答案。\n"
+        "- 输出文件统一写入当前项目的 paper-notes/<paper-name>/ 目录。"
+    )
 
 
 def _format_answer(answer_data) -> str:
-    """Format browser answer into text for Claude."""
+    """Format browser answer into text for fallback chat turns."""
     if isinstance(answer_data, str):
         return answer_data or "继续"
     if isinstance(answer_data, dict):
@@ -658,6 +821,16 @@ def _event_to_sse_data(event: SessionEvent) -> dict | None:
         return {"type": "done"}
 
     return None
+
+
+def _event_payload_preview(msg: dict | None) -> str:
+    if msg is None:
+        return "null"
+    try:
+        text = json.dumps(msg, ensure_ascii=False)
+    except Exception:
+        text = str(msg)
+    return text[:180].replace("\n", "\\n")
 
 
 def main():

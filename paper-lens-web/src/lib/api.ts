@@ -2,7 +2,8 @@ import { Paper, PaperDetail, Mode } from "./types";
 
 export const BACKEND_BASE =
   typeof window !== "undefined"
-    ? (process.env.NEXT_PUBLIC_BACKEND_URL ?? "")
+    ? (process.env.NEXT_PUBLIC_BACKEND_URL ??
+      (process.env.NODE_ENV === "development" ? "http://localhost:8766" : ""))
     : "";
 
 function url(path: string): string {

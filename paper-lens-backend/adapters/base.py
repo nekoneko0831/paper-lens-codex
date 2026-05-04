@@ -29,7 +29,7 @@ class SessionEvent:
 
 @dataclass
 class QuestionData:
-    """Structured question from AskUserQuestion."""
+    """Structured question from Codex request_user_input."""
     questions: list[dict] = field(default_factory=list)
     # Each question: {question: str, header: str, options: [...], multiSelect: bool}
 
@@ -38,8 +38,7 @@ class SessionInterface(ABC):
     """Abstract interface for paper-lens backend adapters.
 
     Implementations:
-    - ClaudeCLIAdapter: wraps Claude Code CLI (local, free)
-    - LarkAdapter: wraps Lark bot API (future)
+    - CodexAppServerAdapter: wraps codex app-server over JSON-RPC
     """
 
     @abstractmethod

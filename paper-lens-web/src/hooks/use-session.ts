@@ -37,9 +37,13 @@ export function useSession() {
   const endSession = useStore((s) => s.endSession);
 
   React.useEffect(() => {
+    // Split on the LAST `:` only. Paper titles can contain colons, while the
+    // backend session id is a UUID and never contains `:`.
     const desired = desiredKey
       ? desiredKey.split("|").map((x) => {
-          const [paper, sessionId] = x.split(":");
+          const idx = x.lastIndexOf(":");
+          const paper = idx >= 0 ? x.slice(0, idx) : x;
+          const sessionId = idx >= 0 ? x.slice(idx + 1) : "";
           return { paper, sessionId };
         })
       : [];

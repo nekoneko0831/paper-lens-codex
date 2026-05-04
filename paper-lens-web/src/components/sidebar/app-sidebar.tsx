@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useStore } from "@/lib/store";
 import { api } from "@/lib/api";
-import { Paper } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ThemeSwitcher } from "@/components/theme/theme-switcher";
 import { toast } from "sonner";
@@ -51,8 +50,11 @@ export function AppSidebar() {
   }, [setPapers]);
 
   React.useEffect(() => {
-    setLoading(true);
-    loadPapers().finally(() => setLoading(false));
+    const id = window.setTimeout(() => {
+      setLoading(true);
+      loadPapers().finally(() => setLoading(false));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [loadPapers]);
 
   const filtered = React.useMemo(() => {
@@ -364,11 +366,14 @@ function NotificationButton() {
   const [perm, setPerm] = React.useState<NotificationPermission | "unsupported">("default");
 
   React.useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      setPerm("unsupported");
-      return;
-    }
-    setPerm(Notification.permission);
+    const id = window.setTimeout(() => {
+      if (typeof window === "undefined" || !("Notification" in window)) {
+        setPerm("unsupported");
+        return;
+      }
+      setPerm(Notification.permission);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   async function handleClick() {

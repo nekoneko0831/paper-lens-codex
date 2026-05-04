@@ -45,7 +45,10 @@ const THEME_META: Record<ThemeName, { label: string; group: string; sub: string;
 export function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
+  React.useEffect(() => {
+    const id = window.setTimeout(() => setMounted(true), 0);
+    return () => window.clearTimeout(id);
+  }, []);
 
   return (
     <DropdownMenu>

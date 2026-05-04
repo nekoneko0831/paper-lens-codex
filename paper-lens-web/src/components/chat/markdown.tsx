@@ -26,6 +26,7 @@ export function Markdown({ children, className, paperName }: MarkdownProps) {
           ? api.fileUrl(paperName, s)
           : s;
       return (
+        // eslint-disable-next-line @next/next/no-img-element -- Paper figures are arbitrary local files served by the backend.
         <img
           src={resolvedSrc}
           alt={alt}
@@ -39,20 +40,20 @@ export function Markdown({ children, className, paperName }: MarkdownProps) {
   return (
     <div
       className={cn(
-        "prose prose-sm max-w-none break-words",
+        "prose prose-sm max-w-none break-words [overflow-wrap:anywhere]",
         "prose-headings:font-heading prose-headings:font-semibold",
         "prose-p:leading-relaxed",
-        "prose-code:bg-muted prose-code:text-foreground prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none",
-        "prose-pre:bg-[#0d1117] prose-pre:text-[#e6edf3] prose-pre:border-none prose-pre:rounded-lg",
-        "prose-a:text-primary prose-a:underline prose-a:underline-offset-2 hover:prose-a:text-primary/80",
-        "prose-table:border prose-th:border prose-td:border prose-th:bg-muted/40 prose-th:px-2 prose-td:px-2",
+        "prose-code:break-words prose-code:bg-muted prose-code:text-foreground prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none",
+        "prose-pre:overflow-x-auto prose-pre:bg-[#0d1117] prose-pre:text-[#e6edf3] prose-pre:border-none prose-pre:rounded-lg",
+        "prose-a:text-primary prose-a:underline prose-a:underline-offset-2 prose-a:[overflow-wrap:anywhere] hover:prose-a:text-primary/80",
+        "prose-table:block prose-table:overflow-x-auto prose-table:border prose-th:border prose-td:border prose-th:bg-muted/40 prose-th:px-2 prose-td:px-2",
         "dark:prose-invert",
         className
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeRaw, rehypeKatex, rehypeHighlight]}
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
+        rehypePlugins={[rehypeRaw, [rehypeKatex, { strict: "ignore", throwOnError: false }], rehypeHighlight]}
         components={imgComponent ? { img: imgComponent } : undefined}
       >
         {children}

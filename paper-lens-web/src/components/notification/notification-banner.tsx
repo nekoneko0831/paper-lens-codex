@@ -14,7 +14,8 @@ export function NotificationBanner() {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     if (Notification.permission === "granted" || Notification.permission === "denied") return;
     if (localStorage.getItem(DISMISS_KEY)) return;
-    setVisible(true);
+    const id = window.setTimeout(() => setVisible(true), 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   async function enable() {

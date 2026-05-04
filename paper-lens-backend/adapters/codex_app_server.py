@@ -35,6 +35,7 @@ event/method names here.
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 import json
 import logging
 import socket
@@ -53,12 +54,9 @@ logger = logging.getLogger(__name__)
 # every tool call. These are non-interactive approvals — the user has
 # already opted into running this backend, which implies trusting it
 # to do paper-reading-grade work (read files, run python, fetch URLs).
-_AUTO_ACCEPT_METHODS = {
-    "item/commandExecution/requestApproval",
-    "item/fileChange/requestApproval",
-    "item/permissions/requestApproval",
-    "applyPatchApproval",
-    "execCommandApproval",
+_FILE_SYSTEM_ENTRY = {
+    "access": "write",
+    "path": {"type": "special", "value": {"kind": "current_working_directory"}},
 }
 
 
@@ -91,10 +89,14 @@ class CodexAppServerAdapter(SessionInterface):
         self._event_queue: asyncio.Queue[SessionEvent] = asyncio.Queue()
         self._next_request_id: int = 1
         self._pending_responses: dict[int, asyncio.Future] = {}
+        self._subscribers: int = 0
+        self._active_turn: bool = False
+        self._event_counts: dict[str, int] = defaultdict(int)
 
         # Parked ``item/tool/requestUserInput`` server-requests:
         #   server_request_id -> original params (for question metadata)
         self._pending_questions: dict[object, dict] = {}
+        self._text_filter = _QuestionBlockFilter(self._event_queue)
 
         self._stopped = False
 
@@ -168,9 +170,11 @@ class CodexAppServerAdapter(SessionInterface):
             await self._notify("initialized", {})
 
             thread_resp = await self._call("thread/start", {
-                # Auto-approve everything: paper-lens needs to run python,
-                # read files, curl PDFs without interrupting the user.
-                "approvalPolicy": "never",
+                # paper-lens needs to run python, read/write notes, and
+                # occasionally fetch PDFs. Requests are answered below by the
+                # backend so the browser UI is not interrupted by approvals.
+                "approvalPolicy": "on-request",
+                "sandbox": "workspace-write",
                 "cwd": self.working_dir,
             })
             self.thread_id = (
@@ -183,6 +187,11 @@ class CodexAppServerAdapter(SessionInterface):
                 )
             logger.info(f"thread/start ok, thread_id={self.thread_id}")
 
+            self._active_turn = True
+            logger.info(
+                "turn/start requested: session=%s thread=%s prompt_chars=%s",
+                self.session_id, self.thread_id, len(prompt),
+            )
             await self._call("turn/start", {
                 "threadId": self.thread_id,
                 "input": [{"type": "text", "text": prompt}],
@@ -198,6 +207,11 @@ class CodexAppServerAdapter(SessionInterface):
             raise RuntimeError("send_message before thread is started")
         if self._cli_ws is None:
             raise RuntimeError("send_message after WS closed")
+        self._active_turn = True
+        logger.info(
+            "turn/start follow-up: session=%s thread=%s message_chars=%s",
+            self.session_id, self.thread_id, len(message),
+        )
         await self._call("turn/start", {
             "threadId": self.thread_id,
             "input": [{"type": "text", "text": message}],
@@ -220,8 +234,9 @@ class CodexAppServerAdapter(SessionInterface):
         """
         if not self._pending_questions:
             return False
-        request_id, params = self._pending_questions.popitem()  # LIFO is fine
-        questions = params.get("questions", [])
+        request_id = next(iter(self._pending_questions))
+        params = self._pending_questions.pop(request_id)
+        questions = _normalise_questions(params.get("questions", []))
 
         # Build the per-question answer map. Frontend may key by header,
         # title, or id — be lenient and accept any of them.
@@ -241,8 +256,9 @@ class CodexAppServerAdapter(SessionInterface):
 
         await self._send_response(request_id, {"answers": answer_map})
         logger.info(
-            f"resolved requestUserInput request_id={request_id} "
-            f"with {sum(len(v['answers']) for v in answer_map.values())} answers"
+            "resolved requestUserInput: session=%s request_id=%s answers=%s",
+            self.session_id, request_id,
+            sum(len(v["answers"]) for v in answer_map.values()),
         )
         return True
 
@@ -299,9 +315,12 @@ class CodexAppServerAdapter(SessionInterface):
         fut: asyncio.Future = loop.create_future()
         self._pending_responses[rid] = fut
         msg = {"jsonrpc": "2.0", "id": rid, "method": method, "params": params}
+        logger.info("rpc call -> %s id=%s session=%s", method, rid, self.session_id)
         await self._cli_ws.send(json.dumps(msg))
         try:
-            return await asyncio.wait_for(fut, timeout=timeout)
+            result = await asyncio.wait_for(fut, timeout=timeout)
+            logger.info("rpc call <- %s id=%s session=%s", method, rid, self.session_id)
+            return result
         finally:
             self._pending_responses.pop(rid, None)
 
@@ -309,12 +328,14 @@ class CodexAppServerAdapter(SessionInterface):
         if self._cli_ws is None:
             return
         msg = {"jsonrpc": "2.0", "method": method, "params": params}
+        logger.info("rpc notify -> %s session=%s", method, self.session_id)
         await self._cli_ws.send(json.dumps(msg))
 
     async def _send_response(self, request_id: object, result: dict) -> None:
         if self._cli_ws is None:
             return
         msg = {"jsonrpc": "2.0", "id": request_id, "result": result}
+        logger.info("server-request response -> id=%s result_keys=%s session=%s", request_id, list(result.keys()), self.session_id)
         await self._cli_ws.send(json.dumps(msg))
 
     async def _send_error_response(
@@ -327,6 +348,7 @@ class CodexAppServerAdapter(SessionInterface):
             "id": request_id,
             "error": {"code": code, "message": message},
         }
+        logger.warning("server-request error -> id=%s code=%s message=%s session=%s", request_id, code, message, self.session_id)
         await self._cli_ws.send(json.dumps(msg))
 
     async def _receive_loop(self) -> None:
@@ -351,6 +373,7 @@ class CodexAppServerAdapter(SessionInterface):
                     SessionEvent(type=EventType.ERROR, data=f"codex WS: {e}")
                 )
         finally:
+            self._active_turn = False
             if not self._stopped:
                 await self._event_queue.put(
                     SessionEvent(type=EventType.DONE, data="ws closed")
@@ -367,6 +390,10 @@ class CodexAppServerAdapter(SessionInterface):
                 return
             if "error" in msg:
                 err = msg["error"] or {}
+                logger.warning(
+                    "rpc response error: id=%s code=%s message=%s session=%s",
+                    rid, err.get("code"), err.get("message"), self.session_id,
+                )
                 fut.set_exception(RuntimeError(
                     f"codex RPC error {err.get('code')}: {err.get('message')}"
                 ))
@@ -385,20 +412,37 @@ class CodexAppServerAdapter(SessionInterface):
     async def _handle_server_request(
         self, request_id: object, method: str, params: dict,
     ) -> None:
+        logger.info("server-request <- %s id=%s session=%s", method, request_id, self.session_id)
         if method == "item/tool/requestUserInput":
             self._pending_questions[request_id] = params
-            questions = params.get("questions", [])
+            questions = _normalise_questions(params.get("questions", []))
+            logger.info(
+                "requestUserInput parked: session=%s request_id=%s questions=%s",
+                self.session_id, request_id, len(questions),
+            )
             await self._event_queue.put(SessionEvent(
                 type=EventType.QUESTION,
-                data=QuestionData(questions=list(questions)),
+                data=QuestionData(questions=questions),
             ))
             # Don't respond — wait for answer_question_structured() to do so.
             return
 
-        if method in _AUTO_ACCEPT_METHODS:
-            # Field name varies: most use {"decision": "accept"}; signed-bearer
-            # variants may differ. "accept" is the universal happy path.
+        if method in ("item/commandExecution/requestApproval", "item/fileChange/requestApproval"):
             await self._send_response(request_id, {"decision": "accept"})
+            return
+
+        if method == "item/permissions/requestApproval":
+            await self._send_response(request_id, {
+                "permissions": {
+                    "fileSystem": {"entries": [_FILE_SYSTEM_ENTRY]},
+                    "network": {"enabled": True},
+                },
+                "scope": "session",
+            })
+            return
+
+        if method in ("applyPatchApproval", "execCommandApproval"):
+            await self._send_response(request_id, {"decision": "approved_for_session"})
             return
 
         if method == "mcpServer/elicitation/request":
@@ -415,6 +459,7 @@ class CodexAppServerAdapter(SessionInterface):
         )
 
     async def _handle_notification(self, method: str, params: dict) -> None:
+        self._log_notification(method, params)
         if method == "thread/started":
             thread = params.get("thread") or {}
             tid = thread.get("id")
@@ -429,9 +474,7 @@ class CodexAppServerAdapter(SessionInterface):
         if method == "item/agentMessage/delta":
             delta = params.get("delta", "")
             if delta:
-                await self._event_queue.put(SessionEvent(
-                    type=EventType.TEXT_DELTA, data=delta,
-                ))
+                await self._text_filter.feed(delta)
             return
 
         if method == "item/reasoning/textDelta":
@@ -456,12 +499,15 @@ class CodexAppServerAdapter(SessionInterface):
             return
 
         if method == "turn/started":
+            self._active_turn = True
             await self._event_queue.put(SessionEvent(
                 type=EventType.STATUS, data={"status": "turn_started"},
             ))
             return
 
         if method == "turn/completed":
+            await self._text_filter.flush()
+            self._active_turn = False
             turn = params.get("turn") or {}
             await self._event_queue.put(SessionEvent(
                 type=EventType.TURN_DONE,
@@ -474,39 +520,48 @@ class CodexAppServerAdapter(SessionInterface):
             return
 
         if method == "thread/tokenUsage/updated":
+            usage = params.get("tokenUsage") or {}
+            last = usage.get("last") or {}
             await self._event_queue.put(SessionEvent(
-                type=EventType.USAGE, data=params,
+                type=EventType.USAGE,
+                data={
+                    "input_tokens": last.get("inputTokens", 0),
+                    "output_tokens": last.get("outputTokens", 0),
+                },
             ))
             return
 
         if method == "item/started":
             item = params.get("item") or {}
-            await self._event_queue.put(SessionEvent(
-                type=EventType.TOOL_USE,
-                data={
-                    "id": item.get("id"),
-                    "type": item.get("type"),
-                    "summary": item.get("summary"),
-                },
-            ))
+            event_data = _tool_use_from_item(item)
+            if event_data is not None:
+                await self._event_queue.put(SessionEvent(
+                    type=EventType.TOOL_USE,
+                    data=event_data,
+                ))
             return
 
         if method == "item/completed":
             item = params.get("item") or {}
-            await self._event_queue.put(SessionEvent(
-                type=EventType.TOOL_RESULT,
-                data={
-                    "id": item.get("id"),
-                    "type": item.get("type"),
-                    "status": item.get("status"),
-                },
-            ))
+            event_data = _tool_result_from_item(item)
+            if event_data is not None:
+                await self._event_queue.put(SessionEvent(
+                    type=EventType.TOOL_RESULT,
+                    data=event_data,
+                ))
             return
 
         if method in ("error", "warning"):
+            payload = params.get("message") or params
+            if method == "error" and isinstance(params, dict) and params.get("willRetry"):
+                await self._event_queue.put(SessionEvent(
+                    type=EventType.STATUS,
+                    data={"status": "codex_reconnecting", "detail": payload},
+                ))
+                return
             await self._event_queue.put(SessionEvent(
                 type=EventType.ERROR if method == "error" else EventType.STATUS,
-                data=params.get("message") or params,
+                data=payload,
             ))
             return
 
@@ -514,6 +569,39 @@ class CodexAppServerAdapter(SessionInterface):
         # bookkeeping events (thread/status/changed, app/list/updated,
         # mcpServer/startupStatus/updated, ...). Log at debug only.
         logger.debug(f"unhandled notification {method!r}")
+
+    def _log_notification(self, method: str, params: dict) -> None:
+        self._event_counts[method] += 1
+        count = self._event_counts[method]
+        if method == "item/agentMessage/delta":
+            delta = params.get("delta") or ""
+            if count == 1 or count % 25 == 0:
+                logger.info(
+                    "notification <- %s count=%s chars=%s session=%s",
+                    method, count, len(delta), self.session_id,
+                )
+            return
+        if method == "thread/tokenUsage/updated":
+            usage = params.get("tokenUsage") or {}
+            last = usage.get("last") or {}
+            logger.info(
+                "notification <- %s input=%s output=%s session=%s",
+                method,
+                last.get("inputTokens", 0),
+                last.get("outputTokens", 0),
+                self.session_id,
+            )
+            return
+        if method in {
+            "turn/started",
+            "turn/completed",
+            "thread/started",
+            "item/started",
+            "item/completed",
+            "error",
+            "warning",
+        }:
+            logger.info("notification <- %s count=%s session=%s", method, count, self.session_id)
 
 
 def _find_free_port() -> int:
@@ -524,3 +612,288 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
     finally:
         s.close()
+
+
+def _normalise_questions(raw_questions: list[dict]) -> list[dict]:
+    """Map codex request_user_input questions onto the Web UI question shape."""
+    questions: list[dict] = []
+    for idx, q in enumerate(raw_questions or []):
+        if not isinstance(q, dict):
+            continue
+        options = q.get("options") or []
+        prompt_text = f"{q.get('header') or ''} {q.get('question') or ''}"
+        multi_select = q.get("multiSelect")
+        if multi_select is None:
+            multi_select = "单选" not in prompt_text and "single" not in prompt_text.lower()
+        questions.append({
+            "id": q.get("id") or f"q{idx + 1}",
+            "header": q.get("header") or "",
+            "question": q.get("question") or q.get("header") or f"问题 {idx + 1}",
+            "options": list(options) if isinstance(options, list) else [],
+            "multiSelect": bool(multi_select),
+            "isOther": bool(q.get("isOther", False)),
+            "isSecret": bool(q.get("isSecret", False)),
+        })
+    return questions
+
+
+class _QuestionBlockFilter:
+    """Parse hidden paper_lens_question fenced blocks out of text deltas."""
+
+    _START = "```paper_lens_question"
+    _END = "```"
+
+    def __init__(self, event_queue: asyncio.Queue[SessionEvent]):
+        self._event_queue = event_queue
+        self._buffer = ""
+        self._in_block = False
+
+    async def feed(self, delta: str) -> None:
+        self._buffer += delta
+        await self._drain(keep_tail=True)
+
+    async def flush(self) -> None:
+        if self._in_block:
+            await self._emit_text(self._START + self._buffer)
+        elif self._buffer:
+            await self._emit_text(self._buffer)
+        self._buffer = ""
+        self._in_block = False
+
+    async def _drain(self, keep_tail: bool) -> None:
+        while True:
+            if not self._in_block:
+                start = self._buffer.find(self._START)
+                if start < 0:
+                    keep = len(self._START) - 1 if keep_tail else 0
+                    if len(self._buffer) > keep:
+                        emit, self._buffer = self._buffer[:-keep], self._buffer[-keep:]
+                        await self._emit_text(emit)
+                    return
+                if start > 0:
+                    await self._emit_text(self._buffer[:start])
+                self._buffer = self._buffer[start + len(self._START):]
+                self._in_block = True
+
+            end = self._buffer.find(self._END)
+            if end < 0:
+                return
+            payload = self._buffer[:end].strip()
+            self._buffer = self._buffer[end + len(self._END):]
+            self._in_block = False
+            await self._emit_question(payload)
+
+    async def _emit_text(self, text: str) -> None:
+        if text:
+            await self._event_queue.put(SessionEvent(
+                type=EventType.TEXT_DELTA,
+                data=text,
+            ))
+
+    async def _emit_question(self, payload: str) -> None:
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError as e:
+            logger.warning("invalid paper_lens_question block: %s", e)
+            await self._emit_text(f"{self._START}\n{payload}\n{self._END}")
+            return
+
+        raw_questions = parsed.get("questions") if isinstance(parsed, dict) else parsed
+        if not isinstance(raw_questions, list):
+            logger.warning("paper_lens_question block did not contain questions")
+            return
+        questions = _normalise_questions(raw_questions)
+        if not questions:
+            logger.warning("paper_lens_question block had no valid questions")
+            return
+        await self._event_queue.put(SessionEvent(
+            type=EventType.QUESTION,
+            data=QuestionData(questions=questions),
+        ))
+
+
+def _tool_use_from_item(item: dict) -> dict | None:
+    if not isinstance(item, dict):
+        return None
+    item_type = item.get("type")
+    item_id = item.get("id")
+    if not item_id:
+        return None
+
+    if item_type == "commandExecution":
+        return {
+            "id": item_id,
+            "tool": "Bash",
+            "input": {
+                "command": item.get("command") or "",
+                "cwd": item.get("cwd"),
+                "commandActions": item.get("commandActions") or [],
+            },
+        }
+    if item_type == "fileChange":
+        return {
+            "id": item_id,
+            "tool": "Edit",
+            "input": {"changes": item.get("changes") or []},
+        }
+    if item_type == "mcpToolCall":
+        server = item.get("server") or "mcp"
+        tool = item.get("tool") or "tool"
+        return {
+            "id": item_id,
+            "tool": f"MCP:{server}/{tool}",
+            "input": {
+                "server": server,
+                "tool": tool,
+                "arguments": item.get("arguments"),
+            },
+        }
+    if item_type == "dynamicToolCall":
+        return {
+            "id": item_id,
+            "tool": item.get("tool") or "Tool",
+            "input": {
+                "namespace": item.get("namespace"),
+                "arguments": item.get("arguments"),
+            },
+        }
+    if item_type == "collabAgentToolCall":
+        return {
+            "id": item_id,
+            "tool": "Agent",
+            "input": {
+                "tool": item.get("tool"),
+                "prompt": item.get("prompt"),
+                "receiverThreadIds": item.get("receiverThreadIds"),
+                "model": item.get("model"),
+                "reasoningEffort": item.get("reasoningEffort"),
+            },
+        }
+    if item_type == "webSearch":
+        return {
+            "id": item_id,
+            "tool": "WebSearch",
+            "input": {
+                "query": item.get("query") or "",
+                "action": item.get("action"),
+            },
+        }
+    if item_type == "imageView":
+        return {
+            "id": item_id,
+            "tool": "ImageView",
+            "input": {"path": item.get("path")},
+        }
+    if item_type == "imageGeneration":
+        return {
+            "id": item_id,
+            "tool": "ImageGeneration",
+            "input": {"status": item.get("status")},
+        }
+    return None
+
+
+def _tool_result_from_item(item: dict) -> dict | None:
+    if not isinstance(item, dict):
+        return None
+    item_type = item.get("type")
+    item_id = item.get("id")
+    if not item_id:
+        return None
+
+    if item_type == "commandExecution":
+        exit_code = item.get("exitCode")
+        status = item.get("status")
+        output = item.get("aggregatedOutput")
+        if not output:
+            output = _format_json_for_tool({
+                "status": status,
+                "exitCode": exit_code,
+                "durationMs": item.get("durationMs"),
+            })
+        return {
+            "id": item_id,
+            "content": str(output),
+            "is_error": status in {"failed", "declined"} or (
+                isinstance(exit_code, int) and exit_code != 0
+            ),
+        }
+    if item_type == "fileChange":
+        status = item.get("status")
+        return {
+            "id": item_id,
+            "content": _format_json_for_tool({
+                "status": status,
+                "changes": item.get("changes") or [],
+            }),
+            "is_error": status not in {"applied", "completed", "success"},
+        }
+    if item_type == "mcpToolCall":
+        error = item.get("error")
+        result = item.get("result")
+        return {
+            "id": item_id,
+            "content": _format_json_for_tool(error if error else result),
+            "is_error": bool(error) or item.get("status") in {"failed", "errored"},
+        }
+    if item_type == "dynamicToolCall":
+        success = item.get("success")
+        return {
+            "id": item_id,
+            "content": _format_json_for_tool({
+                "status": item.get("status"),
+                "success": success,
+                "contentItems": item.get("contentItems"),
+            }),
+            "is_error": success is False or item.get("status") in {"failed", "errored"},
+        }
+    if item_type == "collabAgentToolCall":
+        status = item.get("status")
+        return {
+            "id": item_id,
+            "content": _format_json_for_tool({
+                "status": status,
+                "agentsStates": item.get("agentsStates"),
+                "receiverThreadIds": item.get("receiverThreadIds"),
+            }),
+            "is_error": status == "failed",
+        }
+    if item_type == "webSearch":
+        return {
+            "id": item_id,
+            "content": _format_json_for_tool({
+                "query": item.get("query"),
+                "action": item.get("action"),
+            }),
+            "is_error": False,
+        }
+    if item_type == "imageView":
+        return {
+            "id": item_id,
+            "content": str(item.get("path") or ""),
+            "is_error": False,
+        }
+    if item_type == "imageGeneration":
+        status = item.get("status")
+        return {
+            "id": item_id,
+            "content": _format_json_for_tool({
+                "status": status,
+                "result": item.get("result"),
+                "savedPath": item.get("savedPath"),
+                "revisedPrompt": item.get("revisedPrompt"),
+            }),
+            "is_error": status not in {None, "completed", "success"},
+        }
+    return None
+
+
+def _format_json_for_tool(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, indent=2)
+    except Exception:
+        return str(value)

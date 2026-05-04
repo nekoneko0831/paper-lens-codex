@@ -13,7 +13,6 @@ import {
   ExternalLink,
   FilePlus,
   Pencil,
-  Save,
   X,
   Columns2,
 } from "lucide-react";
@@ -91,7 +90,10 @@ export function FilePreview() {
   }, [paper, setPreviewTabs]);
 
   React.useEffect(() => {
-    loadFiles();
+    const id = window.setTimeout(() => {
+      void loadFiles();
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [loadFiles]);
 
   // Refresh tabs when file_saved events land in the current session
@@ -99,7 +101,11 @@ export function FilePreview() {
   const lastFileSavedAt =
     session.messages.filter((m) => m.kind === "file-saved").slice(-1)[0]?.createdAt ?? 0;
   React.useEffect(() => {
-    if (lastFileSavedAt) loadFiles();
+    if (!lastFileSavedAt) return;
+    const id = window.setTimeout(() => {
+      void loadFiles();
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [lastFileSavedAt, loadFiles]);
 
   // Fullscreen lifecycle
@@ -372,10 +378,13 @@ function FilePane({
 
   // Reset editor state when file changes
   React.useEffect(() => {
-    setEditing(false);
-    setEditorContent("");
-    setEditorDirty(false);
-    setLastSavedAt(null);
+    const id = window.setTimeout(() => {
+      setEditing(false);
+      setEditorContent("");
+      setEditorDirty(false);
+      setLastSavedAt(null);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [file, paper]);
 
   const isMd = file.toLowerCase().endsWith(".md");
@@ -393,8 +402,7 @@ function FilePane({
     }
   }
 
-  const saveRef = React.useRef<(silent?: boolean) => Promise<void>>(null as any);
-  saveRef.current = async (silent?: boolean) => {
+  const saveEdit = React.useCallback(async (silent?: boolean) => {
     setSaving(true);
     try {
       await api.saveFile(paper, file, editorContent);
@@ -407,26 +415,22 @@ function FilePane({
     } finally {
       setSaving(false);
     }
-  };
-
-  async function saveEdit() {
-    await saveRef.current?.(false);
-  }
+  }, [editorContent, file, onReloadFiles, paper]);
 
   // Auto-save: debounce 1.5s after the last edit, silent toast
   React.useEffect(() => {
     if (!editing || !editorDirty) return;
     const t = setTimeout(() => {
-      saveRef.current?.(true);
+      void saveEdit(true);
     }, 1500);
     return () => clearTimeout(t);
-  }, [editorContent, editing, editorDirty]);
+  }, [editing, editorDirty, saveEdit]);
 
   function exitEdit() {
     // With auto-save, unsaved changes are impossible for > 1.5s. Flush once
     // before exiting just in case.
     if (editorDirty) {
-      saveRef.current?.(true);
+      void saveEdit(true);
     }
     setEditing(false);
     setEditorDirty(false);
@@ -542,12 +546,15 @@ function FileViewer({
 
   React.useEffect(() => {
     if (!isMarkdown) return;
-    setLoading(true);
-    api
-      .getFileContent(paper, file)
-      .then((r) => setContent(r.content))
-      .catch(() => setContent("## 无法加载文件"))
-      .finally(() => setLoading(false));
+    const id = window.setTimeout(() => {
+      setLoading(true);
+      api
+        .getFileContent(paper, file)
+        .then((r) => setContent(r.content))
+        .catch(() => setContent("## 无法加载文件"))
+        .finally(() => setLoading(false));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [paper, file, isMarkdown]);
 
   if (isPdf) {

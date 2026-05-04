@@ -21,7 +21,7 @@ export function QuestionCard({ message }: { message: QuestionMessage }) {
 
   const [selections, setSelections] = React.useState<Record<string, string[]>>(() => {
     const init: Record<string, string[]> = {};
-    message.questions.forEach((q) => (init[q.question] = []));
+    message.questions.forEach((q) => (init[questionKey(q)] = []));
     return init;
   });
   const [customInput, setCustomInput] = React.useState<Record<string, string>>({});
@@ -41,16 +41,21 @@ export function QuestionCard({ message }: { message: QuestionMessage }) {
     if (!sessionId || !currentPaper) return;
     const payload: Record<string, string | string[]> = {};
     message.questions.forEach((q) => {
-      const sel = [...(selections[q.question] ?? [])];
-      const custom = (customInput[q.question] ?? "").trim();
+      const key = questionKey(q);
+      const sel = [...(selections[key] ?? [])];
+      const custom = (customInput[key] ?? "").trim();
       if (custom) sel.push(custom);
-      payload[q.question] = q.multiSelect ? sel : sel[0] ?? "";
+      payload[key] = q.multiSelect === false ? sel[0] ?? "" : sel;
     });
     setSubmitting(true);
     try {
       await api.sendAnswer(sessionId, payload);
-      const summary = Object.entries(payload)
-        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+      const summary = message.questions
+        .map((q) => {
+          const key = questionKey(q);
+          const v = payload[key];
+          return `${q.question}: ${Array.isArray(v) ? v.join(", ") : v}`;
+        })
         .join("\n");
       pushUser(currentPaper, summary);
       answerQuestion(currentPaper, message.id);
@@ -76,7 +81,7 @@ export function QuestionCard({ message }: { message: QuestionMessage }) {
 
       {message.questions.map((q, qi) => (
         <div key={qi} className={cn(qi > 0 && "mt-3 border-t border-border/50 pt-3")}>
-          <div className="text-[13px] font-medium leading-snug">{q.question}</div>
+          <div className="text-[13px] font-medium leading-snug [overflow-wrap:anywhere]">{q.question}</div>
           {q.header && (
             <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
               {q.header}
@@ -84,13 +89,14 @@ export function QuestionCard({ message }: { message: QuestionMessage }) {
           )}
 
           <div className="mt-2 grid gap-1">
-            {q.options.map((opt, oi) => {
-              const selected = (selections[q.question] ?? []).includes(opt.label);
+            {(q.options ?? []).map((opt, oi) => {
+              const key = questionKey(q);
+              const selected = (selections[key] ?? []).includes(opt.label);
               return (
                 <button
                   key={oi}
                   disabled={message.answered || submitting}
-                  onClick={() => toggle(q.question, opt.label, q.multiSelect)}
+                  onClick={() => toggle(key, opt.label, q.multiSelect !== false)}
                   className={cn(
                     "group flex items-start gap-2 rounded-lg border border-border/60 bg-background/50 px-2.5 py-1.5 text-left transition-all",
                     "hover:border-primary/40 hover:bg-background/80",
@@ -106,8 +112,8 @@ export function QuestionCard({ message }: { message: QuestionMessage }) {
                     {selected && <Check className="h-2.5 w-2.5" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[12px] font-medium leading-tight">{opt.label}</div>
-                    <div className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground">
+                    <div className="text-[12px] font-medium leading-tight [overflow-wrap:anywhere]">{opt.label}</div>
+                    <div className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
                       {opt.description}
                     </div>
                   </div>
@@ -117,8 +123,8 @@ export function QuestionCard({ message }: { message: QuestionMessage }) {
           </div>
 
           <Input
-            value={customInput[q.question] ?? ""}
-            onChange={(e) => setCustomInput({ ...customInput, [q.question]: e.target.value })}
+            value={customInput[questionKey(q)] ?? ""}
+            onChange={(e) => setCustomInput({ ...customInput, [questionKey(q)]: e.target.value })}
             placeholder="其他（可自定义输入）"
             disabled={message.answered || submitting}
             className="mt-1.5 h-7 text-[11px]"
@@ -138,4 +144,8 @@ export function QuestionCard({ message }: { message: QuestionMessage }) {
       </div>
     </motion.div>
   );
+}
+
+function questionKey(q: QuestionMessage["questions"][number]): string {
+  return q.id || q.header || q.question;
 }

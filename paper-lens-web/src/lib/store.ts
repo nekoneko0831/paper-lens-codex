@@ -10,6 +10,7 @@ import {
   AssistantTextMessage,
   ThinkingMessage,
   ToolMessage,
+  Question,
 } from "./types";
 
 /* ------------------------------------------------------------------
@@ -110,6 +111,8 @@ const SKIP_TOOL_CARD = new Set([
   "AskUserQuestion",
 ]);
 
+const MAX_PERSISTED_MESSAGES = 300;
+
 /* Update one paper's session with a partial diff. */
 function updateSession(
   sessions: Record<string, ActiveSession>,
@@ -119,6 +122,179 @@ function updateSession(
   const prev = sessions[paper] ?? emptySession();
   const delta = typeof patch === "function" ? patch(prev) : patch;
   return { ...sessions, [paper]: { ...prev, ...delta } };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asNumber(value: unknown, fallback: number | null = null): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function sanitizeMessage(value: unknown): Message | null {
+  if (!isRecord(value)) return null;
+  const kind = value.kind;
+  const id = asString(value.id, nextId("rehydrated"));
+  const createdAt = asNumber(value.createdAt, Date.now()) ?? Date.now();
+
+  if (kind === "user") {
+    return { id, kind, text: asString(value.text), createdAt };
+  }
+  if (kind === "assistant-text") {
+    return {
+      id,
+      kind,
+      text: asString(value.text),
+      streaming: false,
+      createdAt,
+    };
+  }
+  if (kind === "thinking") {
+    return {
+      id,
+      kind,
+      text: asString(value.text),
+      streaming: false,
+      createdAt,
+    };
+  }
+  if (kind === "tool") {
+    const toolName = asString(value.toolName);
+    if (!toolName) return null;
+    const status = value.status === "error" || value.status === "success"
+      ? value.status
+      : "success";
+    return {
+      id,
+      kind,
+      toolName,
+      toolId: typeof value.toolId === "string" ? value.toolId : undefined,
+      input: isRecord(value.input) ? value.input : undefined,
+      result: typeof value.result === "string" ? value.result : undefined,
+      isError: value.isError === true,
+      status,
+      startedAt: asNumber(value.startedAt, createdAt) ?? createdAt,
+      endedAt: asNumber(value.endedAt, createdAt) ?? createdAt,
+      createdAt,
+    };
+  }
+  if (kind === "question") {
+    const questions = Array.isArray(value.questions)
+      ? value.questions.map(sanitizeQuestion).filter((q): q is Question => q !== null)
+      : [];
+    return {
+      id,
+      kind,
+      questions,
+      answered: true,
+      createdAt,
+    };
+  }
+  if (kind === "file-saved") {
+    return {
+      id,
+      kind,
+      path: asString(value.path),
+      tool: asString(value.tool),
+      createdAt,
+    };
+  }
+  if (kind === "error") {
+    return {
+      id,
+      kind,
+      text: asString(value.text),
+      createdAt,
+    };
+  }
+  return null;
+}
+
+function sanitizeQuestion(value: unknown): Question | null {
+  if (!isRecord(value)) return null;
+  const rawOptions = Array.isArray(value.options) ? value.options : [];
+  return {
+    id: typeof value.id === "string" ? value.id : undefined,
+    header: asString(value.header),
+    question: asString(value.question, asString(value.header, "请选择")),
+    options: rawOptions.filter(isRecord).map((option) => ({
+      label: asString(option.label),
+      description: asString(option.description),
+      preview: typeof option.preview === "string" ? option.preview : undefined,
+    })).filter((option) => option.label),
+    multiSelect: value.multiSelect === true,
+    isOther: value.isOther === true,
+    isSecret: value.isSecret === true,
+  };
+}
+
+function sanitizeTask(value: unknown): PlanTask | null {
+  if (!isRecord(value)) return null;
+  const subject = asString(value.subject);
+  if (!subject) return null;
+  const status = value.status;
+  return {
+    id: asString(value.id, nextId("task")),
+    subject,
+    description: typeof value.description === "string" ? value.description : undefined,
+    status:
+      status === "in_progress" || status === "completed" || status === "deleted"
+        ? status
+        : "pending",
+    startedAt: asNumber(value.startedAt) ?? undefined,
+    completedAt: asNumber(value.completedAt) ?? undefined,
+  };
+}
+
+function sanitizeSession(value: unknown): ActiveSession {
+  if (!isRecord(value)) return emptySession();
+  const rawMessages = Array.isArray(value.messages) ? value.messages : [];
+  const messages = rawMessages
+    .slice(-MAX_PERSISTED_MESSAGES)
+    .map(sanitizeMessage)
+    .filter((m): m is Message => m !== null);
+  const sessionStatus: SessionStatus = value.sessionStatus === "error" ? "error" : "done";
+
+  return {
+    sessionId: null,
+    sessionStatus,
+    sessionStartedAt: asNumber(value.sessionStartedAt),
+    sessionEndedAt: asNumber(value.sessionEndedAt),
+    messages,
+    tasks: Array.isArray(value.tasks)
+      ? value.tasks.map(sanitizeTask).filter((task): task is PlanTask => task !== null)
+      : [],
+    inputTokens: asNumber(value.inputTokens, 0) ?? 0,
+    outputTokens: asNumber(value.outputTokens, 0) ?? 0,
+    currentAssistantId: null,
+    currentThinkingId: null,
+    toolByRunningId: {},
+  };
+}
+
+function sanitizePersistedState(value: unknown): Partial<StoreState> {
+  if (!isRecord(value)) return {};
+  const sessions: Record<string, ActiveSession> = {};
+  if (isRecord(value.sessions)) {
+    for (const [paper, session] of Object.entries(value.sessions)) {
+      sessions[paper] = sanitizeSession(session);
+    }
+  }
+  const currentPaper = typeof value.currentPaper === "string" ? value.currentPaper : null;
+  return {
+    currentPaper: currentPaper && sessions[currentPaper] ? currentPaper : null,
+    sessions,
+    previewOpen: value.previewOpen === true,
+    previewPaper: typeof value.previewPaper === "string" ? value.previewPaper : null,
+    activeTab: typeof value.activeTab === "string" ? value.activeTab : null,
+    splitTab: typeof value.splitTab === "string" ? value.splitTab : null,
+    sidebarCollapsed: value.sidebarCollapsed === true,
+  };
 }
 
 export const useStore = create<StoreState>()(
@@ -169,7 +345,8 @@ export const useStore = create<StoreState>()(
         clearCurrentPaperSession: () =>
           set((st) => {
             if (!st.currentPaper) return {};
-            const { [st.currentPaper]: _, ...rest } = st.sessions;
+            const rest = { ...st.sessions };
+            delete rest[st.currentPaper];
             return { sessions: rest };
           }),
 
@@ -282,6 +459,7 @@ export const useStore = create<StoreState>()(
 
             case "tool_use": {
               const { tool, input, id: toolId } = ev.data;
+              if (typeof tool !== "string" || !tool) return;
 
               if (tool === "TaskCreate" && input) {
                 const subject = (input.subject as string) ?? "(untitled task)";
@@ -557,15 +735,17 @@ export const useStore = create<StoreState>()(
           for (const [paper, s] of Object.entries(state.sessions)) {
             normalisedSessions[paper] = {
               ...s,
-              sessionStatus:
-                s.sessionStatus === "streaming" || s.sessionStatus === "starting"
-                  ? "done"
-                  : s.sessionStatus,
-              messages: s.messages.map((m) =>
-                (m.kind === "assistant-text" || m.kind === "thinking") && (m as { streaming?: boolean }).streaming
-                  ? { ...m, streaming: false }
-                  : m
-              ) as Message[],
+              sessionId: null,
+              sessionStatus: s.sessionStatus === "error" ? "error" : "done",
+              messages: s.messages.map((m) => {
+                if ((m.kind === "assistant-text" || m.kind === "thinking") && m.streaming) {
+                  return { ...m, streaming: false };
+                }
+                if (m.kind === "question") {
+                  return { ...m, answered: true };
+                }
+                return m;
+              }) as Message[],
             };
           }
           return {
@@ -578,6 +758,10 @@ export const useStore = create<StoreState>()(
             sidebarCollapsed: state.sidebarCollapsed,
           } as StoreState;
         },
+        merge: (persistedState, currentState) => ({
+          ...currentState,
+          ...sanitizePersistedState(persistedState),
+        }),
       }
     )
   )

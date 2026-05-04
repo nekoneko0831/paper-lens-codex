@@ -4,7 +4,7 @@ import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User, Bot, Brain, FilePlus2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useStore, useCurrentSession } from "@/lib/store";
+import { useCurrentSession } from "@/lib/store";
 import { Markdown } from "./markdown";
 import { ToolCard } from "./tool-card";
 import { QuestionCard } from "./question-card";

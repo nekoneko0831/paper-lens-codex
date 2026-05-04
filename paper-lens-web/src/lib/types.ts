@@ -31,10 +31,13 @@ export interface QuestionOption {
 }
 
 export interface Question {
+  id?: string;
   question: string;
   header: string;
-  options: QuestionOption[];
-  multiSelect: boolean;
+  options?: QuestionOption[] | null;
+  multiSelect?: boolean;
+  isOther?: boolean;
+  isSecret?: boolean;
 }
 
 /* ---------- SSE event shapes from server.py ---------- */

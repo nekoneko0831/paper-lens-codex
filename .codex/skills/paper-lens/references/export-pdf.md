@@ -33,13 +33,14 @@ paper-notes/<name>/
 
 ```bash
 # 定位 md_to_pdf.py 脚本（兼容不同安装位置）
-SCRIPT=$(find ~/.claude/skills/paper-lens/scripts -name "md_to_pdf.py" 2>/dev/null | head -1)
+SCRIPT=$(find .codex/skills/paper-lens/scripts ~/.codex/skills/codex-primary-runtime/paper-lens/scripts ~/.codex/skills/paper-lens/scripts -name "md_to_pdf.py" 2>/dev/null | head -1)
 if [ -z "$SCRIPT" ]; then
-    SCRIPT=$(find .claude/skills/paper-lens/scripts -name "md_to_pdf.py" 2>/dev/null | head -1)
+    echo "未找到 md_to_pdf.py，请确认 paper-lens skill 已安装。"
+    exit 1
 fi
 
 # 执行转换
-python3 "$SCRIPT" "<markdown_path>" --style <style> --open
+python3 "$SCRIPT" "<markdown_path>" --style <style>
 ```
 
 ### Step 4: 输出确认
@@ -47,7 +48,6 @@ python3 "$SCRIPT" "<markdown_path>" --style <style> --open
 转换完成后告知用户：
 - PDF 文件路径
 - 页数和文件大小
-- 已在默认应用中打开（如指定了 --open）
 
 ## 依赖
 

@@ -111,7 +111,7 @@ The Web UI is identical between paper-lens (Claude) and paper-lens-codex, but th
 ## Caveats / 注意事项
 
 - `codex app-server` is **experimental** upstream. Bumping the codex CLI may break the adapter; if so, run `codex app-server generate-json-schema --out /tmp/schema` and reconcile method/field names in `paper-lens-backend/adapters/codex_app_server.py`.
-- Auto-approve policy is `never` (i.e., "never ask for approval"). Paper-reading is read-and-summarize-heavy; if you want a different posture, adjust `approvalPolicy` in `start()`.
+- The backend starts Codex with `approvalPolicy: "on-request"` and answers paper-reading approvals itself, so the browser UI is not interrupted by command/file prompts while network and note-writing requests can still be granted.
 - v0.1 ships the same skill content as paper-lens, with surface-level adaptations (AskUserQuestion → 结构化提问, `/frontend-slides` references rewritten). The prompt has not been re-tuned for codex's strengths/weaknesses — there's headroom for codex-specific iteration.
 
 ---

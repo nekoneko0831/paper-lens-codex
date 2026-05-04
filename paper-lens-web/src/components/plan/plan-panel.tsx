@@ -6,7 +6,7 @@ import { Check, ChevronDown, CircleDashed, Loader2, Activity } from "lucide-reac
 import { cn } from "@/lib/utils";
 import { useCurrentSession } from "@/lib/store";
 import { useElapsed } from "@/hooks/use-elapsed";
-import { formatElapsed, formatTokens } from "@/lib/format";
+import { formatElapsed } from "@/lib/format";
 import { NumberTicker } from "@/components/ui/number-ticker";
 
 export function PlanPanel() {
