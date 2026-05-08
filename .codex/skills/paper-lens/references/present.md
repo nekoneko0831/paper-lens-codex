@@ -2,15 +2,43 @@
 
 ## 目标
 
-帮用户准备一场论文讲解的 slides，输出结构化的内容文档（slides-content.md，含 `figures/` 路径引用），用户后续可用任意 Markdown→Slides 工具（codex 自带的 `slides` skill、reveal.js、Marp、PowerPoint 等）生成最终演示文稿。
+帮用户准备一场论文讲解的 slides，输出结构化的内容文档（slides-content.md，含 `figures/` 路径引用）。`slides-content.md` 生成后，必须交给 `frontend-slides` skill 生成最终 HTML 演示文稿；paper-lens 不自己开发 HTML deck。
 
 ## 核心原则
 
 1. **用户主导**：每一页的内容都和用户讨论确认，不替用户做决定
 2. **图文并茂**：论文原图直接引用到 slides，不只是文字
 3. **分步推进**：规划 → 图表映射 → 大纲 → 逐页确认 → 输出文档
+4. **职责边界**：paper-lens 只产出 `slides-content.md`；HTML 演示稿由 `frontend-slides` skill 负责
 
 ---
+
+## frontend-slides 安装检查（展示模式必须执行）
+
+进入展示模式后，先确认 `frontend-slides` skill 是否可用：
+
+```bash
+FRONTEND_SLIDES_SKILL=""
+for d in \
+  ".codex/skills/frontend-slides" \
+  ".agents/skills/frontend-slides" \
+  "$HOME/.codex/skills/frontend-slides" \
+  "$HOME/.codex/skills/codex-primary-runtime/frontend-slides"
+do
+  if [ -f "$d/SKILL.md" ]; then
+    FRONTEND_SLIDES_SKILL="$d"
+    break
+  fi
+done
+echo "$FRONTEND_SLIDES_SKILL"
+```
+
+处理规则：
+
+- 如果 `.codex/skills/frontend-slides/SKILL.md` 已存在：继续展示模式。
+- 如果 `.agents/skills/frontend-slides/SKILL.md` 存在但 `.codex/skills/frontend-slides/` 不存在：主动执行 `mkdir -p .codex/skills && rsync -a .agents/skills/frontend-slides/ .codex/skills/frontend-slides/`，完成本仓库安装后继续。
+- 如果只在 `$HOME/.codex/...` 找到：继续展示模式，最终生成 HTML 时调用该 skill。
+- 如果完全找不到：继续先生成 `slides-content.md`，但在保存后提醒用户先安装 `frontend-slides`；不要退而求其次自己写 HTML。
 
 ## 流程（多轮交互）
 
@@ -231,33 +259,27 @@ cp paper-notes/<name>/images/<source>.png paper-notes/<name>/figures/fig1-<desc>
 
 ---
 
-## 图片嵌入到 HTML 演示文稿
+## 交接给 frontend-slides
 
-如果后续要用任意 Markdown→Slides 工具把 slides-content.md 转成自包含的 HTML（无外部依赖、单文件可分享），需要将 `figures/` 中的图片嵌入到演示文稿中。
+`slides-content.md` 保存后，必须在对话中提示：
 
-### 嵌入方式：Base64 编码
+```markdown
+Slides 内容文档已保存到 paper-notes/<name>/slides-content.md。
+论文图表已筛选到 paper-notes/<name>/figures/。
 
-为了保证 HTML 文件完全自包含（单文件可分享），将图片转为 base64 嵌入：
-
-```python
-import base64, os
-
-def img_to_base64(img_path):
-    """将图片文件转为 base64 data URI"""
-    ext = os.path.splitext(img_path)[1].lower()
-    mime = {'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif', 'svg': 'image/svg+xml'}
-    mime_type = mime.get(ext.lstrip('.'), 'image/png')
-    with open(img_path, 'rb') as f:
-        data = base64.b64encode(f.read()).decode()
-    return f"data:{mime_type};base64,{data}"
+接下来我会使用 `frontend-slides` skill 生成可直接打开的 HTML 演示稿。该 skill 会负责视觉设计、图片 base64 嵌入、键盘/触控翻页和多视口验证。
 ```
 
-在 HTML 中使用：
+然后调用/切换到 `frontend-slides` skill，让它读取 `paper-notes/<name>/slides-content.md` 和 `figures/` 目录生成最终 HTML。
 
-```html
-<img src="data:image/png;base64,..." alt="Figure 1: 系统架构图"
-     style="max-width: 90%; max-height: min(55vh, 450px); object-fit: contain;">
-```
+**不要自己开发最终 HTML 演示稿**：
+
+- 不要在 paper-lens 流程里手写 HTML/CSS/JS deck
+- 不要生成 `build-slides.py` 之类的临时生成器
+- 不要改用 reveal.js / Marp / PowerPoint 等替代路线
+- 不要声称“没有 frontend-slides 所以我直接写一个”
+
+如果当前运行环境找不到 `frontend-slides`，只停在 `slides-content.md`，并提示用户安装该 skill 后继续。
 
 ### 图片 slide 的内容密度限制
 
@@ -279,12 +301,6 @@ def img_to_base64(img_path):
 Slides 内容文档已保存到 paper-notes/<name>/slides-content.md
 论文图表已筛选到 paper-notes/<name>/figures/
 
-下一步可选路径：
-1. **codex 自带的 `slides` skill**（PowerPoint 风格 .pptx 输出）— 直接把 slides-content.md 喂给它
-2. **HTML / Web 风格** — 用 reveal.js / Marp / 任意 Markdown→Slides 工具，建议要求工具：
-   - 把 figures/ 中的图片 base64 编码嵌入 HTML（单文件可分享）
-   - 先和你确认视觉风格（配色、字体、布局），不要跳过或自动选择
-3. **PowerPoint 直接编辑** — 如果你已经有公司模板，告诉我我可以按模板逐页填内容
-
-由你选择哪条路径继续。
+下一步：
+我会使用 `frontend-slides` skill 继续生成可直接打开的 HTML 演示稿；paper-lens 不会自己开发最终 deck。
 ```

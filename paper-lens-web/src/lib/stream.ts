@@ -19,11 +19,45 @@ export function streamSession(
   const url = `${BACKEND_BASE}/api/stream/${sessionId}`;
   const es = new EventSource(url);
   let closed = false;
+  let pendingText = "";
+  let pendingThinking = "";
+  let flushTimer: number | null = null;
+
+  const flushBufferedDeltas = () => {
+    if (flushTimer) {
+      window.clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    if (pendingText) {
+      onEvent({ type: "text_delta", content: pendingText });
+      pendingText = "";
+    }
+    if (pendingThinking) {
+      onEvent({ type: "thinking_delta", content: pendingThinking });
+      pendingThinking = "";
+    }
+  };
+
+  const scheduleFlush = () => {
+    if (flushTimer) return;
+    flushTimer = window.setTimeout(flushBufferedDeltas, 50);
+  };
 
   es.onmessage = (ev) => {
     if (!ev.data) return;
     try {
       const parsed = JSON.parse(ev.data) as SSEEvent;
+      if (parsed.type === "text_delta") {
+        pendingText += parsed.content;
+        scheduleFlush();
+        return;
+      }
+      if (parsed.type === "thinking_delta") {
+        pendingThinking += parsed.content;
+        scheduleFlush();
+        return;
+      }
+      flushBufferedDeltas();
       onEvent(parsed);
       // Only close on explicit end-of-session. TURN_DONE keeps the stream
       // open so multi-turn conversations can continue without reconnecting.
@@ -53,6 +87,7 @@ export function streamSession(
 
   return () => {
     closed = true;
+    flushBufferedDeltas();
     es.close();
   };
 }

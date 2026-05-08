@@ -50,7 +50,37 @@ echo "BACKEND=$BACKEND"
 echo "HAS_WEB_PROJECT=$HAS_WEB_PROJECT"
 ```
 
-### Step 2: 根据探测结果给出提示（不自动 open）
+### Step 2: 主动确保 frontend-slides skill 可用
+
+展示模式会在生成 `slides-content.md` 后交给 `frontend-slides` 生成最终 HTML 演示文稿，因此每次加载 paper-lens 时都要轻量检查：
+
+```bash
+FRONTEND_SLIDES_SKILL=""
+for d in \
+  ".codex/skills/frontend-slides" \
+  ".agents/skills/frontend-slides" \
+  "$HOME/.codex/skills/frontend-slides" \
+  "$HOME/.codex/skills/codex-primary-runtime/frontend-slides"
+do
+  if [ -f "$d/SKILL.md" ]; then
+    FRONTEND_SLIDES_SKILL="$d"
+    break
+  fi
+done
+
+echo "FRONTEND_SLIDES_SKILL=$FRONTEND_SLIDES_SKILL"
+```
+
+处理规则：
+
+| 状态 | 行为 |
+|------|------|
+| `FRONTEND_SLIDES_SKILL` 非空 | 继续正常流程；展示模式结束后可直接转交 `frontend-slides` |
+| 当前仓库存在 `.codex/skills/frontend-slides/SKILL.md` | 视为已安装，不需要重复操作 |
+| 当前项目根存在 `.agents/skills/frontend-slides/SKILL.md` 但 `.codex/skills/frontend-slides/` 不存在 | 主动执行 `mkdir -p .codex/skills && rsync -a .agents/skills/frontend-slides/ .codex/skills/frontend-slides/` 完成本仓库安装，然后继续 |
+| 以上路径都不存在 | 明确告诉用户：`未找到 frontend-slides skill，展示模式仍会先生成 slides-content.md；生成后请先安装 frontend-slides，再继续生成 HTML 演示稿。` |
+
+### Step 3: 根据探测结果给出提示（不自动 open）
 
 根据 Step 1 输出，**只输出文字提示，不要执行 `open` 命令**：
 
@@ -61,14 +91,14 @@ echo "HAS_WEB_PROJECT=$HAS_WEB_PROJECT"
 | `HAS_WEB_PROJECT=yes` 但两者都不活 | `可选：在两个终端分别运行 cd paper-lens-backend && python3 server.py（后端）和 cd paper-lens-web && npm run dev（前端，默认 3001）启动 Web UI。或者继续在这里对话。` |
 | `HAS_WEB_PROJECT=no` | 纯 CLI 模式，不提示 Web UI（如果想试 Web UI，可以 clone https://github.com/nekoneko0831/paper-lens-codex 仓库） |
 
-### Step 3: 绝对禁止
+### Step 4: 绝对禁止
 
 - ❌ **绝对不要** 运行 `nohup python3 server.py &` 或任何后台启动命令
 - ❌ **绝对不要** 运行 `open http://...` 或 `open -a Safari ...`
 - ❌ **绝对不要** 把"探测完成"当作一个已完成任务（它不是任务，只是环境检查）
 - ❌ **绝对不要** 在 Phase -1 阶段创建 Task 条目
 
-### Step 4: 继续正常流程
+### Step 5: 继续正常流程
 
 如果用户附带了论文参数（路径/URL），直接进入 Phase 0 解析论文。否则等待用户指令。
 
@@ -224,9 +254,13 @@ paper-notes/<paper-name>/
 
 **关键机制**：
 - **图表映射**：从 `images/` 中识别论文原图（Figure 1, 2, 3...），复制并重命名到 `figures/` 目录（如 `fig1-architecture.png`），方便后续引用
-- **图片嵌入**：slides-content.md 中用 `![描述](figures/xxx.png)` 引用图片；后续用 codex 自带的 `slides` skill 或任意 Markdown→Slides 工具生成最终演示文稿（如选 HTML 路径，应将图片 base64 嵌入以单文件分发）
+- **HTML 生成交接**：slides-content.md 中用 `![描述](figures/xxx.png)` 引用图片；生成最终演示文稿时必须交给 `frontend-slides` skill 处理，由它负责视觉设计、图片 base64 嵌入和视口验证
 
-最终保存到 `paper-notes/<name>/slides-content.md`。提示用户可以用 codex 自带的 `slides` skill（生成 .pptx）、reveal.js、Marp 或任意 Markdown→Slides 工具继续生成最终演示文稿。
+最终保存到 `paper-notes/<name>/slides-content.md`。保存后必须明确提示用户：
+
+> `slides-content.md` 已完成。接下来我会使用 `frontend-slides` skill 生成可直接打开的 HTML 演示稿。
+
+**禁止**：paper-lens 自己手写 HTML/CSS/JS 演示稿、自己生成 `build-slides.py`、自己直接开发 deck。paper-lens 的职责到 `slides-content.md` 为止；最终演示稿必须由 `frontend-slides` skill 生成。
 
 ### 批量检索模式
 
