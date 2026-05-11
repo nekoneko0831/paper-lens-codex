@@ -70,10 +70,9 @@ class CodexAppServerAdapter(SessionInterface):
     typed map ``{question_id: {answers: [...]}}`` rather than an opaque
     text blob.
 
-    Cleanup compatibility: ``_cli_ws`` is exposed so server.py's
-    ``_cleanup_expired_sessions`` (which skips sessions whose
-    ``adapter._cli_ws is not None``) keeps mid-turn sessions alive even
-    if no HTTP endpoint has been hit recently.
+    Lifecycle: server.py keeps adapters alive until backend shutdown or
+    explicit ``stop()``. This avoids reaping long-lived Web UI sessions
+    while a browser tab is idle or parked on user input.
     """
 
     def __init__(self, working_dir: str):

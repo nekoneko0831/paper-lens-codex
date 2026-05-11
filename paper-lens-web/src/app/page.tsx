@@ -137,7 +137,7 @@ export default function Page() {
       await api.sendMessage(sessionId, text);
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
-        // Backend lost the session (TTL expired or backend restarted).
+        // Backend lost the session (backend restarted or session process exited).
         // Preserve existing messages + tokens — only start a new session
         // for the same paper with the same text.
         toast.info("会话已过期，正在恢复…");

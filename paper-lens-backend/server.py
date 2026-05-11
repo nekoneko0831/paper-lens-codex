@@ -43,10 +43,9 @@ CODEX_WORKSPACE_LINK = Path(os.environ.get("PAPER_LENS_CODEX_WORKSPACE", "/priva
 # Server port — resolved once at startup
 SERVER_PORT = int(os.environ.get("PORT", 8766))
 
-# Active sessions: session_id -> (adapter, last_active_timestamp)
+# Active sessions: session_id -> (adapter, last_activity_timestamp)
 sessions: dict[str, tuple[CodexAppServerAdapter, float]] = {}
 hubs: dict[str, "SessionEventHub"] = {}
-SESSION_TTL_SECONDS = 1800  # 30 minutes — covers long turns + user-input waits
 
 
 class SessionEventHub:
@@ -140,62 +139,19 @@ class SessionEventHub:
             self.unsubscribe(q)
 
 
-# ── Session cleanup ───────────────────────────────────────────────────
-
-async def _cleanup_expired_sessions() -> None:
-    """Periodically remove sessions older than SESSION_TTL_SECONDS.
-
-    Sessions whose adapter still holds an open WebSocket to the codex
-    app-server are skipped: while codex is actively producing output
-    (or parked on a server-initiated requestUserInput waiting for user
-    input), no HTTP endpoint gets hit, so the timestamp would otherwise
-    age past TTL and the session would be reaped mid-turn.
-    """
-    def _is_session_in_use(adapter: CodexAppServerAdapter) -> bool:
-        if getattr(adapter, "_active_turn", False):
-            return True
-        if getattr(adapter, "_pending_questions", None):
-            return True
-        if getattr(adapter, "_subscribers", 0) > 0:
-            return True
-        return False
-
-    while True:
-        await asyncio.sleep(60)  # check every minute
-        now = time.time()
-        expired = [
-            sid for sid, (adapter, ts) in sessions.items()
-            if now - ts > SESSION_TTL_SECONDS
-            and not _is_session_in_use(adapter)
-        ]
-        for sid in expired:
-            adapter, _ = sessions.pop(sid)
-            hub = hubs.pop(sid, None)
-            logger.info(f"Cleaning up expired session: {sid}")
-            try:
-                if hub:
-                    await hub.stop()
-                await adapter.stop()
-            except Exception as e:
-                logger.warning(f"Error stopping expired session {sid}: {e}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    task = asyncio.create_task(_cleanup_expired_sessions())
     yield
-    # Shutdown
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
     for sid, hub in list(hubs.items()):
         try:
             await hub.stop()
         except Exception as e:
             logger.warning("Error stopping event hub %s: %s", sid, e)
+    for sid, (adapter, _) in list(sessions.items()):
+        try:
+            await adapter.stop()
+        except Exception as e:
+            logger.warning("Error stopping session %s: %s", sid, e)
 
 
 app = FastAPI(title="Paper-Lens-Codex Backend", lifespan=lifespan)
