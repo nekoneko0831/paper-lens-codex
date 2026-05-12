@@ -40,6 +40,25 @@ echo "$FRONTEND_SLIDES_SKILL"
 - 如果只在 `$HOME/.codex/...` 找到：继续展示模式，最终生成 HTML 时调用该 skill。
 - 如果完全找不到：继续先生成 `slides-content.md`，但在保存后提醒用户先安装 `frontend-slides`；不要退而求其次自己写 HTML。
 
+## 内容基础（展示模式必须基于精读）
+
+展示模式的主要理解来源必须优先使用 `paper-reading.md`，而不是 `deep-learn.md`。
+
+读取优先级：
+
+1. `paper-notes/<name>/paper-reading.md`：主来源。用于抽取主问题链、核心结论、方法框架、关键图表解释、实验结论、局限与启发。
+2. `paper-notes/<name>/slides-content.md`：如果已有旧稿，只作为历史参考，不得直接拼接复用。
+3. `paper-notes/<name>/speed-read.md`：只作为快速校验，不得替代精读理解。
+4. `paper-notes/<name>/deep-learn.md`：只作为补充材料，尤其用于大白话解释、术语解释和用户之前指定的关注点。
+5. `paper-notes/<name>/extracted-text.md`：事实兜底，用于核对数字、图表 caption、公式和实验设置。
+
+执行规则：
+
+- 如果 `paper-reading.md` 已存在：先从中提炼“展示叙事线”，再进入展示规划和图表映射。
+- 如果 `paper-reading.md` 不存在：不要默认转向学习模式；先提示用户建议生成精读文档，或在展示流程前按精读策略补一版 `paper-reading.md`。
+- Slides 大纲必须能追溯到精读文档的主线：为什么这个问题重要、论文怎么做、关键证据是什么、局限在哪里、对听众有什么启发。
+- Speaker Notes 可以吸收 `deep-learn.md` 的大白话解释，但页面正文和结构不应以学习模式笔记为主。
+
 ## 流程（多轮交互）
 
 ### Step 1: 展示规划

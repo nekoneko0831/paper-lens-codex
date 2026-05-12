@@ -1,6 +1,6 @@
 ---
 name: paper-lens
-description: "论文阅读助手：速览/学习/展示三模式阅读 + 批量检索/批量下载。当用户提供论文 PDF、要求分析/阅读论文、说「帮我读这篇论文」「搜索/检索论文」、或粘贴多个 arXiv 链接时触发。"
+description: "论文阅读助手：速览/精读/学习/展示四模式阅读 + 批量检索/批量下载。当用户提供论文 PDF、要求分析/阅读论文、说「帮我读这篇论文」「精读文档」「全文关键点梳理」「搜索/检索论文」、或粘贴多个 arXiv 链接时触发。"
 ---
 
 # Paper Lens — 论文阅读 & 检索助手
@@ -12,6 +12,7 @@ description: "论文阅读助手：速览/学习/展示三模式阅读 + 批量�
 | 模式 | 适合场景 | 耗时 | 交互方式 |
 |------|----------|------|----------|
 | **速览** | 快速判断是否值得深读 | 5分钟 | 一次性输出 |
+| **精读** | 论文级精读文档，适合系统学习和发飞书 | 20-40分钟 | 一次性生成 + 可追问修改 |
 | **学习** | 深度理解、实践落地 | 20-40分钟 | 多轮确认 |
 | **展示** | 准备 slides 汇报 | 15-30分钟 | 逐页讨论 |
 | **PDF 导出** | 导出排版精美的 PDF | 1分钟 | 一键导出 |
@@ -22,7 +23,7 @@ description: "论文阅读助手：速览/学习/展示三模式阅读 + 批量�
 
 ## Phase -1: 环境探测（每次 skill 加载时执行）
 
-**核心原则**：**不要主动启动或打开任何浏览器窗口**。只探测 Web UI 是否已在运行，然后一次性告诉用户使用路径。用户如果没跑 Web UI，保持纯 CLI 模式继续。
+**核心原则**：**不要主动打开任何浏览器窗口**。只探测 Web UI 是否已在运行，然后一次性告诉用户使用路径。用户如果没跑 Web UI，保持纯 CLI 模式继续；如果用户想启动 Web UI，只提示前端命令，因为前端 dev 脚本会自动启动并守护后端。
 
 ### Step 1: 轻量探测
 
@@ -87,14 +88,15 @@ echo "FRONTEND_SLIDES_SKILL=$FRONTEND_SLIDES_SKILL"
 | 状态 | 提示内容 |
 |------|---------|
 | `WEB_UI` 和 `BACKEND` 都活 | `Paper Lens (Codex) Web UI 已在运行 · http://localhost:3001 · 你可以打开浏览器继续，或继续在这里对话。` |
-| 只有 `BACKEND` | `后端已运行。如果想用浏览器界面，在另一个终端运行 cd paper-lens-web && npm run dev` |
-| `HAS_WEB_PROJECT=yes` 但两者都不活 | `可选：在两个终端分别运行 cd paper-lens-backend && python3 server.py（后端）和 cd paper-lens-web && npm run dev（前端，默认 3001）启动 Web UI。或者继续在这里对话。` |
+| 只有 `BACKEND` | `后端已运行。如果想用浏览器界面，运行 cd paper-lens-web && npm run dev；前端会复用现有后端。` |
+| `HAS_WEB_PROJECT=yes` 但两者都不活 | `可选：运行 cd paper-lens-web && npm run dev 启动 Web UI；这个命令会自动启动并守护后端。或者继续在这里对话。` |
 | `HAS_WEB_PROJECT=no` | 纯 CLI 模式，不提示 Web UI（如果想试 Web UI，可以 clone https://github.com/nekoneko0831/paper-lens-codex 仓库） |
 
 ### Step 4: 绝对禁止
 
 - ❌ **绝对不要** 运行 `nohup python3 server.py &` 或任何后台启动命令
 - ❌ **绝对不要** 运行 `open http://...` 或 `open -a Safari ...`
+- ❌ **绝对不要** 提示用户手动启动后端作为常规路径；常规路径只说 `cd paper-lens-web && npm run dev`
 - ❌ **绝对不要** 把"探测完成"当作一个已完成任务（它不是任务，只是环境检查）
 - ❌ **绝对不要** 在 Phase -1 阶段创建 Task 条目
 
@@ -162,6 +164,7 @@ paper-notes/<paper-name>/
 ├── images/                # 提取的所有图表（矢量图 + 嵌入位图）
 ├── figures/               # 【展示模式】筛选后的关键图表（重命名为 fig1-xxx.png）
 ├── speed-read.md          # 速览模式输出
+├── paper-reading.md       # 精读模式输出（论文级精读文档）
 ├── deep-learn.md          # 学习模式输出（增量保存，每步追加）
 ├── slides-content.md      # 展示模式输出
 └── *.pdf                  # PDF 导出（与源 md 同名）
@@ -184,6 +187,7 @@ paper-notes/<paper-name>/
 |-------------|---------|-------------|
 | 包含「搜索/检索/survey/综述」+ 主题词 | **批量检索** | ✅ 是 |
 | 包含 ≥2 个 arXiv URL 或 arXiv ID | **批量下载** | ✅ 是 |
+| 包含「论文级精读文档/精读文档/全文关键点梳理/像 CodeTracer 那种飞书文档」 | **精读** | 视情况 |
 | 提供单篇论文 PDF/URL | 进入 Phase 0 → 询问阅读模式 | ❌ 否 |
 
 **阅读模式询问**（单篇论文解析完成后）：
@@ -191,12 +195,13 @@ paper-notes/<paper-name>/
 > 论文已解析完成。你想用哪种模式来阅读？
 >
 > 1. **速览** — 5 分钟消化核心，快速判断值不值得深读
-> 2. **学习** — 大白话深度理解，适合想真正搞懂这篇论文的人
-> 3. **展示** — 准备一场论文讲解的 slides
+> 2. **精读** — 生成论文级精读文档，适合系统学习和发飞书
+> 3. **学习** — 大白话深度理解，适合想真正搞懂这篇论文的人
+> 4. **展示** — 准备一场论文讲解的 slides
 
 **默认**：如果用户没有明确选择，默认使用速览模式。
 
-**模式可串联**：用户可以先速览，觉得有价值再切换到学习或展示模式。速览的内容会被学习模式复用，不重复劳动。
+**模式可串联**：用户可以先速览，觉得有价值再切换到精读、学习或展示模式。已有速览/学习/展示内容可被后续模式参考，但不能简单拼接。
 
 ---
 
@@ -204,12 +209,17 @@ paper-notes/<paper-name>/
 
 ### 「结构化提问」是什么
 
-在多个 references 里我们要求用「结构化提问」收集用户选择。映射如下，按可用性优先：
+在多个 references 里我们要求用「结构化提问」收集用户选择。Codex Web UI 使用 backend-owned 协议，不依赖 Default mode 下可能不可用的 `request_user_input`。
 
-1. **首选**：Codex 的 `request_user_input` / `item/tool/requestUserInput`（一次性传多组带选项的问题，前端会渲染成选择卡片，自带「其他」输入框）。这是 paper-lens-codex Web UI 设计的协议。每个问题至少包含 `id`、`header`、`question`、`options: [{label, description}]`；如果是单选，把「单选」写进 `question` 或 `header`，否则默认按多选处理。
-2. **次选**：把同样的问题列表渲染成 Markdown 嵌套清单（每组 ≤4 选项 + 一行「其他/自定义」），输出到对话里，等用户用普通文本回复。
+1. **Web UI 首选**：输出隐藏 fenced block，后端会拦截并转成前端 question card，不显示原始 JSON：
 
-不论走哪条路：每组问题最多 4 个选项，按主题/关联分组；**始终保留「其他/自定义」** 让用户自由输入；术语英文必须带中文注释（≤8 字）。
+```paper_lens_question
+{"questions":[{"id":"focus","header":"阅读重点","question":"你更想看哪类内容？","options":[{"label":"方法","description":"重点拆解方法流程"},{"label":"实验","description":"重点解读结果和指标"}],"multiSelect":true}]}
+```
+
+2. **纯 CLI 兜底**：把同样的问题列表渲染成 Markdown 嵌套清单（每组 ≤4 选项 + 一行「其他/自定义」），输出到对话里，等用户用普通文本回复。
+
+每个问题至少包含 `id`、`header`、`question`、`options: [{label, description}]`、`multiSelect`。不论走哪条路：每组问题最多 4 个选项，按主题/关联分组；**始终保留「其他/自定义」** 让用户自由输入；术语英文必须带中文注释（≤8 字）。精读模式默认一次性生成，不强制结构化提问。
 
 ### 速览模式
 
@@ -238,6 +248,19 @@ paper-notes/<paper-name>/
 - **增量保存**：每个 Step 完成后自动追加到 `paper-notes/<name>/deep-learn.md`，用户全程可随时打开文件查看已学内容
 - **交互选择**：术语和公式的确认环节优先使用 codex 的 `requestUserInput` 服务端请求（Web UI 会渲染成卡片选择，多选 + 自定义输入）；若运行在纯 CLI 且无前端，则 fallback 为 Markdown 列表 + 等待用户文本回复
 - **全程可对话**：用户随时可用自然语言追问、补充术语、修改笔记、跳步或回溯，产生的新内容实时更新到笔记文件
+
+### 精读模式
+
+加载 `references/paper-reading.md` 执行。
+
+**核心体验：一次性生成完整的论文级精读文档，后续可自然语言追问修改。**
+
+执行说明：
+- 输出固定保存到 `paper-notes/<name>/paper-reading.md`
+- 可以复用已有 `speed-read.md` / `deep-learn.md` / `slides-content.md` 的理解和图表线索，但不得只拼接旧内容
+- 图表、公式、指标解读必须顺着融入「方法拆解」「数据与实验设置」「实验结果分析」「局限与外推边界」等对应章节，不单独开“图表公式解读”大章节
+- Q&A 只保留信息熵最高的 5-7 个问题
+- Codex 版不为精读模式强制结构化提问，默认一次性生成；用户可在生成后继续要求修改、增删章节或改写风格
 
 ### 展示模式
 
@@ -328,6 +351,7 @@ paper-notes/<paper-name>/
 ## 参考文件
 
 - `references/speed-read.md` — 速览模式详细指令和输出模板
+- `references/paper-reading.md` — 精读模式详细指令（论文级精读文档）
 - `references/deep-learn.md` — 学习模式详细指令（名词提取、大白话拆解、公式解读、附录提炼）
 - `references/present.md` — 展示模式详细指令（规划、大纲、逐页确认、输出规范）
 - `references/export-pdf.md` — PDF 导出指令（样式选择、脚本执行）
