@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Zap, BookOpen, Presentation } from "lucide-react";
+import { Zap, BookOpen, Presentation, BookMarked } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Mode } from "@/lib/types";
 
 const MODES: { id: Mode; label: string; icon: React.ElementType; desc: string }[] = [
   { id: "speed-read", label: "速览", icon: Zap, desc: "5 分钟消化核心" },
+  { id: "paper-reading", label: "精读", icon: BookMarked, desc: "论文级精读文档" },
   { id: "deep-learn", label: "学习", icon: BookOpen, desc: "大白话深度理解" },
   { id: "present", label: "展示", icon: Presentation, desc: "准备 slides 讲解" },
 ];
@@ -20,7 +21,7 @@ interface Props {
 
 export function ModeSwitcher({ value, onChange, disabled }: Props) {
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {MODES.map((m) => {
         const active = value === m.id;
         const Icon = m.icon;

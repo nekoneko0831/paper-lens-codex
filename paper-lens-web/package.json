@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3001",
+    "dev": "node scripts/dev-with-backend.mjs",
+    "dev:frontend": "next dev --port 3001",
     "build": "next build",
     "start": "next start --port 3001",
     "lint": "eslint"

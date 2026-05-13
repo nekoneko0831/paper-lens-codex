@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { BookOpen, Sparkles, Zap } from "lucide-react";
+import { BookMarked, BookOpen, Sparkles, Zap } from "lucide-react";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { cn } from "@/lib/utils";
 
@@ -34,11 +34,16 @@ export function EmptyState({ hasPaper }: { hasPaper: boolean }) {
       </BlurFade>
 
       <BlurFade inView delay={0.4}>
-        <div className="mt-12 grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="mt-12 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Tile
             icon={Zap}
             title="速览"
             desc="5 分钟消化核心，快速判断是否值得深读"
+          />
+          <Tile
+            icon={BookMarked}
+            title="精读"
+            desc="生成论文级精读文档，适合系统学习和发飞书"
           />
           <Tile
             icon={BookOpen}

@@ -1,10 +1,11 @@
-export type Mode = "speed-read" | "deep-learn" | "present" | "chat";
+export type Mode = "speed-read" | "paper-reading" | "deep-learn" | "present" | "chat";
 
 export interface Paper {
   name: string;
   files: string[];
   has_pdf: boolean;
   has_speed_read: boolean;
+  has_paper_reading: boolean;
   has_deep_learn: boolean;
   has_slides: boolean;
 }

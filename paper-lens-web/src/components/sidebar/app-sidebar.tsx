@@ -157,6 +157,7 @@ export function AppSidebar() {
               </div>
               <div className="mt-1 flex gap-1 pl-5.5">
                 {p.has_speed_read && <ModeBadge label="速览" tone="emerald" />}
+                {p.has_paper_reading && <ModeBadge label="精读" tone="purple" />}
                 {p.has_deep_learn && <ModeBadge label="学习" tone="blue" />}
                 {p.has_slides && <ModeBadge label="展示" tone="amber" />}
               </div>
@@ -174,9 +175,10 @@ export function AppSidebar() {
   );
 }
 
-function ModeBadge({ label, tone }: { label: string; tone: "emerald" | "blue" | "amber" }) {
+function ModeBadge({ label, tone }: { label: string; tone: "emerald" | "purple" | "blue" | "amber" }) {
   const toneClass = {
     emerald: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    purple: "bg-purple-500/15 text-purple-600 dark:text-purple-400",
     blue: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
     amber: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
   }[tone];

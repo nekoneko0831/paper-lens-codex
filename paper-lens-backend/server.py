@@ -192,8 +192,9 @@ async def list_papers():
                 [f for f in files if f.endswith('.md') and f not in _exclude_md],
                 key=lambda f: (
                     0 if f.startswith('speed-read') else
-                    1 if f.startswith('deep-learn') else
-                    2 if f.startswith('slides-content') else 3,
+                    1 if f.startswith('paper-reading') else
+                    2 if f.startswith('deep-learn') else
+                    3 if f.startswith('slides-content') else 4,
                     f,
                 ),
             )
@@ -208,6 +209,7 @@ async def list_papers():
                 "note_files": note_files,
                 "html_files": html_files,
                 "has_speed_read": any(f.startswith('speed-read') and f.endswith('.md') for f in files),
+                "has_paper_reading": any(f.startswith('paper-reading') and f.endswith('.md') for f in files),
                 "has_deep_learn": any(f.startswith('deep-learn') and f.endswith('.md') for f in files),
                 "has_slides": any(f.startswith('slides-content') and f.endswith('.md') for f in files),
                 "has_presentation": len(html_files) > 0,
@@ -394,7 +396,7 @@ async def save_file(
     - Path must resolve inside the target paper directory.
     - Refuses to overwrite canonical output files like `paper.pdf`,
       `extracted-text.md`, `speed-read.md`, `deep-learn.md`,
-      `slides-content.md`.
+      `paper-reading.md`, `slides-content.md`.
     """
     import re as _re
 
@@ -421,6 +423,7 @@ async def save_file(
     RESERVED = {
         "extracted-text.md",
         "speed-read.md",
+        "paper-reading.md",
         "deep-learn.md",
         "slides-content.md",
     }
@@ -616,6 +619,7 @@ def _backup_if_exists(paper_name: str, mode: str) -> None:
     """
     mode_files = {
         "speed-read": "speed-read.md",
+        "paper-reading": "paper-reading.md",
         "deep-learn": "deep-learn.md",
         "present": "slides-content.md",
     }
@@ -689,6 +693,7 @@ def _build_prompt(paper_name: str, mode: str, pdf_url: str, message: str = "") -
 
     mode_map = {
         "speed-read": "速览模式",
+        "paper-reading": "论文级精读文档",
         "deep-learn": "学习模式",
         "present": "展示模式",
     }

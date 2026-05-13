@@ -70,17 +70,16 @@ npm install
 
 ### Run / 启动
 
-Two terminals:
+One terminal:
 
 ```bash
-# Terminal 1 — backend (port 8766)
-cd paper-lens-backend && python3 server.py
-
-# Terminal 2 — frontend (port 3001)
-cd paper-lens-web && npm run dev
+cd paper-lens-web
+npm run dev
 ```
 
 Then open http://localhost:3001 in your browser.
+
+`npm run dev` starts the FastAPI backend behind the frontend, points Next.js at it, and restarts that backend if it exits while the frontend dev server is still running. Users should not need to start or think about port 8766 in normal use.
 
 ### Skill install (optional CLI mode) / Skill 安装（可选 CLI 模式）
 
@@ -96,7 +95,9 @@ Then in any directory, ask codex things like "帮我读这篇论文：https://ar
 
 ## Usage / 使用
 
-In the Web UI: drop a PDF or paste an arXiv URL on the left panel, pick a paper, then choose **速览 / 学习 / 展示** above the chat. The agent runs in `codex app-server`, streams output via SSE, and uses `requestUserInput` for multi-choice questions during deep-learn / present modes.
+In the Web UI: drop a PDF or paste an arXiv URL on the left panel, pick a paper, then choose **速览 / 精读 / 学习 / 展示** above the chat. The agent runs in `codex app-server`, streams output via SSE, and uses structured question cards for multi-choice questions during deep-learn / present modes.
+
+Session state is intentionally long-lived: the backend keeps Codex sessions until backend shutdown or an explicit stop, while the browser stores conversation history in localStorage. A refresh should not expire an idle paper-reading session.
 
 If you'd rather use codex CLI directly (no Web UI), invoke the skill the same way you would in Claude Code: drop a PDF path or arXiv URL into the conversation.
 

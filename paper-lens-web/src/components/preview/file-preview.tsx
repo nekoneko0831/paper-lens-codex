@@ -38,6 +38,7 @@ const MDEditor = dynamic(
 
 const CANONICAL = new Set([
   "speed-read.md",
+  "paper-reading.md",
   "deep-learn.md",
   "slides-content.md",
   "extracted-text.md",
@@ -62,8 +63,9 @@ export function FilePreview() {
     try {
       const detail = await api.getPaperDetail(paper);
       const preferredOrder = [
-        "deep-learn.md",
         "speed-read.md",
+        "paper-reading.md",
+        "deep-learn.md",
         "slides-content.md",
         "slides-content.html",
         "paper.pdf",

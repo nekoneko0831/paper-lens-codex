@@ -107,6 +107,8 @@ export default function Page() {
       const modeLabel =
         modeToUse === "speed-read"
           ? "速览"
+          : modeToUse === "paper-reading"
+          ? "精读"
           : modeToUse === "deep-learn"
           ? "学习"
           : modeToUse === "present"

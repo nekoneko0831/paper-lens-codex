@@ -12,7 +12,7 @@ npm run dev
 
 Open http://localhost:3001.
 
-The default backend is `http://localhost:8766`. Change `NEXT_PUBLIC_BACKEND_URL` in `.env.local` if the backend runs elsewhere.
+`npm run dev` starts the backend behind the frontend. The default backend is `http://localhost:8766`; change `NEXT_PUBLIC_BACKEND_URL` in `.env.local` only if you are intentionally pointing the UI at a separately managed backend.
 
 ## Checks
 

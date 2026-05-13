@@ -313,7 +313,13 @@ export const useStore = create<StoreState>()(
         splitTab: null,
         sidebarCollapsed: false,
 
-        setPapers: (p) => set({ papers: p }),
+        setPapers: (p) =>
+          set({
+            papers: p.map((paper) => ({
+              ...paper,
+              has_paper_reading: paper.has_paper_reading ?? false,
+            })),
+          }),
         setCurrentPaper: (name) => set({ currentPaper: name }),
         setCurrentDetail: (d) => set({ currentDetail: d }),
 
